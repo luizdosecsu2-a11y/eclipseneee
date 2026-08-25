@@ -890,6 +890,24 @@ function Calculadora({ t, onFechar }) {
 }
 
 
+/* uma linha da conta do Total: rótulo à esquerda, valor à direita */
+function Linha({ t, rot, valor, forte, total }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14,
+      padding: total ? "16px 0 4px" : "11px 0",
+      borderTop: total ? `1px solid ${t.edge}` : "none",
+      marginTop: total ? 10 : 0,
+    }}>
+      <span style={{ fontSize: total ? 12 : 12.5, color: total || forte ? t.text : t.muted,
+        fontWeight: total ? 700 : 400, letterSpacing: total ? 1.4 : 0,
+        textTransform: total ? "uppercase" : "none" }}>{rot}</span>
+      <Money t={t} value={valor} tone={total ? "vivo" : "auto"} size={total ? 20 : 14} sign={!forte || total} />
+    </div>
+  );
+}
+
+
 function NavBtn({ t, active, icon, label, onClick }) {
   return (
     <button onClick={onClick} className="ct-item" style={{
@@ -1341,10 +1359,18 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [verConta, setVerConta] = useState(false);
   const [sub, setSub] = useState("contas");
-  const somaFornecedores = (op && op.fornecedores ? op.fornecedores : []).reduce((a, f) => a + calcOperacao({
-    comissao: f.comissao ?? 50, lulaPct: f.lulaPct ?? LULA_PADRAO,
-    perdaAtiva: !!f.perdaAtiva, perdaFixa: f.perdaFixa, fornecedorPct: f.pct,
-  }, f.rows || []).lucroLiquido, 0);
+  /* cada fornecedor calculado com os percentuais dele */
+  const fornCalc = (op && op.fornecedores ? op.fornecedores : []).map((f) => ({
+    f,
+    c: calcOperacao({
+      comissao: f.comissao ?? 50, lulaPct: f.lulaPct ?? LULA_PADRAO,
+      perdaAtiva: !!f.perdaAtiva, perdaFixa: f.perdaFixa,
+      fornecedorNome: f.nome, fornecedorPct: f.pct,
+    }, f.rows || []),
+  }));
+  const somaF = (sel) => fornCalc.reduce((a, x) => a + sel(x.c), 0);
+  const somaFornecedores = somaF((x) => x.lucroLiquido);
+
   if (!op) {
     return (
       <Panel t={t} label="Nenhuma operação aberta">
@@ -1361,6 +1387,24 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
     perdaAtiva, perdaFixa, qtdContas, coberturaPerda, baseAcerto, corteProgramador,
     minhaParteCalc, corteLula, liquidoPeloCalculo, totalPago, lucroLiquido,
     fornecedorNome, fornecedorPct, corteFornecedor, lucroBruto, baseLula } = c;
+
+  const temForn = fornCalc.length > 0;
+  /* G = geral: suas contas + todos os fornecedores */
+  const G = {
+    dep: c.totalDep + somaF((x) => x.totalDep),
+    saq: c.totalSaq + somaF((x) => x.totalSaq),
+    bruto: c.lucroBruto + somaF((x) => x.lucroBruto),
+    prog: c.corteProgramador + somaF((x) => x.corteProgramador),
+    lula: c.corteLula + somaF((x) => x.corteLula),
+    forn: c.corteFornecedor + somaF((x) => x.corteFornecedor),
+    pago: c.totalPago + somaF((x) => x.totalPago),
+    liquido: c.lucroLiquido + somaFornecedores,
+    liqCalc: c.liquidoPeloCalculo + somaF((x) => x.liquidoPeloCalculo),
+    qtd: c.qtdContas + fornCalc.reduce((a, x) => a + x.c.qtdContas, 0),
+  };
+  /* quanto do reembolso da perda garantida realmente entrou — assim a conta fecha certinho */
+  G.reembolso = G.liquido + G.lula + G.forn + G.pago + G.prog - G.bruto;
+
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
@@ -1439,39 +1483,56 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
 
       {sub === "total" && (
         <Panel t={t} label="Total">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 22 }}>
-            <Readout t={t} label="Seu lucro líquido real" value={lucroLiquido} tone="auto" size={34} sign />
-            <Readout t={t} label="Lucro líquido pelo cálculo do programador" value={liquidoPeloCalculo} tone="auto" size={24} sign />
-          </div>
-          <div className="ct-rule" style={{ margin: "20px 0 18px" }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 20 }}>
-            <Readout t={t} label={`Programador (${fmtPctBR(comissaoPct)})`} value={corteProgramador} size={20} />
-            <Readout t={t} label={`Lula (${fmtPctBR(lulaPct)})`} value={corteLula} size={20} />
-            {fornecedorPct > 0 && (
-              <Readout t={t} label={`${fornecedorNome || "Fornecedor"} (${fmtPctBR(fornecedorPct)})`} value={corteFornecedor} size={20} />
-            )}
-            <Readout t={t} label="Pago aos clientes" value={totalPago} size={20} />
-          </div>
-          <div className="ct-rule" style={{ margin: "20px 0 18px" }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 20 }}>
-            <Readout t={t} label="Total investido" value={totalDep} size={20} />
-            <Readout t={t} label="Total retornado" value={totalSaq} size={20} />
-            <Readout t={t} label="Lucro bruto" value={lucroBruto} tone="auto" size={20} sign />
-          </div>
-          {(op.fornecedores || []).length > 0 && (
+          {/* o número que importa */}
+          <Readout t={t} label="Seu lucro líquido real" value={G.liquido} tone="vivo" size={40} sign />
+          <p style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, margin: "12px 0 0", letterSpacing: .6 }}>
+            {G.qtd} {G.qtd === 1 ? "CONTA" : "CONTAS"} · {fmtBRL(G.dep)} INVESTIDOS · {fmtBRL(G.saq)} RETORNADOS
+            {temForn ? ` · ${fornCalc.length} ${fornCalc.length === 1 ? "FORNECEDOR" : "FORNECEDORES"}` : ""}
+          </p>
+
+          <div className="ct-rule" style={{ margin: "22px 0 4px" }} />
+
+          {/* a conta, de cima para baixo */}
+          <Linha t={t} rot="Lucro bruto" valor={G.bruto} forte />
+          <Linha t={t} rot="Programador" valor={-G.prog} />
+          <Linha t={t} rot="Lula" valor={-G.lula} />
+          {G.forn !== 0 && <Linha t={t} rot="Fornecedores" valor={-G.forn} />}
+          {G.pago !== 0 && <Linha t={t} rot="Pago aos clientes" valor={-G.pago} />}
+          {Math.abs(G.reembolso) > 0.005 && <Linha t={t} rot="Reembolso da perda garantida" valor={G.reembolso} />}
+          <Linha t={t} rot="Seu lucro líquido" valor={G.liquido} total />
+
+          {temForn && (
             <>
-              <div className="ct-rule" style={{ margin: "20px 0 18px" }} />
-              <span className="ct-label">Fornecedores</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 20, marginTop: 14 }}>
-                {(op.fornecedores || []).map((f) => {
-                  const cf = calcOperacao({ comissao: f.comissao ?? 50, lulaPct: f.lulaPct ?? LULA_PADRAO,
-                    perdaAtiva: !!f.perdaAtiva, perdaFixa: f.perdaFixa, fornecedorPct: f.pct }, f.rows || []);
-                  return <Readout key={f.id} t={t} label={`${f.nome || "Fornecedor"} — pra você`} value={cf.lucroLiquido} tone="auto" size={20} sign />;
-                })}
-                <Readout t={t} label="Você + todos os fornecedores" value={lucroLiquido + somaFornecedores} tone="auto" size={26} sign />
+              <div className="ct-rule" style={{ margin: "26px 0 16px" }} />
+              <span className="ct-label">De onde vem</span>
+              <div className="ct-scroll" style={{ overflowX: "auto", marginTop: 12 }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 460 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...t.th, width: 180 }}>Origem</th>
+                      <th style={{ ...t.th, textAlign: "right" }}>Bruto</th>
+                      <th style={{ ...t.th, textAlign: "right" }}>Pra você</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="ct-row" style={{ borderTop: `1px solid ${t.line}` }}>
+                      <td style={{ ...t.td, padding: "12px 9px", fontSize: 12.5, fontWeight: 600, color: t.text }}>Suas contas</td>
+                      <td style={{ ...t.td, padding: "12px 9px", textAlign: "right" }}><Money t={t} value={lucroBruto} tone="auto" size={13} sign /></td>
+                      <td style={{ ...t.td, padding: "12px 9px", textAlign: "right" }}><Money t={t} value={lucroLiquido} tone="vivo" size={13} sign /></td>
+                    </tr>
+                    {fornCalc.map(({ f, c: cf }) => (
+                      <tr key={f.id} className="ct-row" style={{ borderTop: `1px solid ${t.line}` }}>
+                        <td style={{ ...t.td, padding: "12px 9px", fontSize: 12.5, color: t.muted }}>{f.nome || "Fornecedor sem nome"}</td>
+                        <td style={{ ...t.td, padding: "12px 9px", textAlign: "right" }}><Money t={t} value={cf.lucroBruto} tone="auto" size={13} sign /></td>
+                        <td style={{ ...t.td, padding: "12px 9px", textAlign: "right" }}><Money t={t} value={cf.lucroLiquido} tone="vivo" size={13} sign /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </>
           )}
+
           <div className="ct-rule" style={{ margin: "20px 0 14px" }} />
           <button onClick={() => setVerConta((v) => !v)} className="ct-btn ct-btn-line">
             {verConta ? "Esconder a conta" : "Ver a conta passo a passo"}
