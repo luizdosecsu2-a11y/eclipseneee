@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Plus, FileText, Trash2, Moon, Sun, LayoutDashboard, X, KeyRound,
-  Eye, EyeOff, Copy, Check, Pencil, RefreshCw, ChevronDown, ChevronRight
+  Eye, EyeOff, Copy, Check, Pencil, RefreshCw, ChevronDown, ChevronRight, Calculator
 } from "lucide-react";
 
 
@@ -127,6 +127,7 @@ export default function CasinoTracker() {
   const [confirmDeleteOp, setConfirmDeleteOp] = useState(null);
 
   const mobile = useMobile();
+  const [calcAberta, setCalcAberta] = useState(false);
   const theme = data.theme || "dark";
   const t = T(theme);
 
@@ -410,6 +411,7 @@ export default function CasinoTracker() {
 
   const cssVars = {
     "--ink": t.ink, "--panel": t.panel, "--line": t.line, "--red": t.red,
+    "--edge": t.edge, "--sheen": t.sheen, "--green": t.green,
     "--text": t.text, "--muted": t.muted, "--hover": t.hover, "--focus": t.focus,
     "--display": t.display, "--ui": t.ui, "--mono": t.mono,
   };
@@ -425,45 +427,59 @@ export default function CasinoTracker() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-        .ct-panel{background:var(--panel);border:1px solid var(--line);border-radius:0}
-        .ct-label{font-size:9.5px;font-weight:600;letter-spacing:2.2px;text-transform:uppercase;color:var(--muted);display:block}
+        /* painel: canto suave, borda quase invisível e um fio de luz na aresta de cima */
+        .ct-panel{
+          background:var(--panel);
+          border:1px solid var(--line);
+          border-radius:14px;
+          box-shadow:inset 0 1px 0 var(--sheen), 0 1px 2px rgba(0,0,0,.5);
+        }
+        .ct-label{font-size:9px;font-weight:600;letter-spacing:2.6px;text-transform:uppercase;color:var(--muted);display:block}
         .ct-rule{height:1px;background:var(--line)}
 
-        .ct-scroll::-webkit-scrollbar{height:8px;width:8px}
+        .ct-scroll::-webkit-scrollbar{height:7px;width:7px}
         .ct-scroll::-webkit-scrollbar-track{background:transparent}
-        .ct-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:0}
+        .ct-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
         .ct-scroll::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 
+        .ct-row{transition:background .14s ease}
         .ct-row:hover{background:var(--hover)}
-        .ct-cell input{width:100%;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12.5px;outline:none;padding:8px 6px}
+        .ct-cell input{width:100%;background:transparent;border:1px solid transparent;color:var(--text);
+          font-family:var(--mono);font-size:12.5px;outline:none;padding:9px 9px;border-radius:8px;transition:all .14s ease}
+        .ct-cell input::placeholder{color:var(--muted);opacity:.5}
+        .ct-cell input:hover{background:var(--hover)}
+        .ct-cell input:focus{background:var(--focus);border-color:var(--edge)}
+
+        .ct-item{transition:background .14s ease,color .14s ease;border-radius:10px}
+        .ct-item:hover{background:var(--hover)}
+
+        .ct-btn{font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;border-radius:10px;
+          display:inline-flex;align-items:center;gap:8px;padding:10px 16px;transition:all .16s ease;white-space:nowrap}
+        .ct-btn-solid{background:var(--text);border:1px solid var(--text);color:var(--ink)}
+        .ct-btn-solid:hover{opacity:.86;transform:translateY(-1px)}
+        .ct-btn-line{background:transparent;border:1px solid var(--line);color:var(--muted)}
+        .ct-btn-line:hover{border-color:var(--edge);color:var(--text);background:var(--hover)}
+        .ct-btn-red{background:transparent;border:1px solid var(--line);color:var(--red)}
+        .ct-btn-red:hover{border-color:var(--red);background:rgba(240,97,109,.08)}
+        .ct-btn:active{transform:translateY(0)}
+
+        @keyframes ct-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        button{cursor:pointer;font-family:inherit}
+        input,select,textarea{font-family:inherit;border-radius:10px}
+        :focus-visible{outline:1px solid var(--edge);outline-offset:3px}
+        ::selection{background:var(--green);color:var(--ink)}
 
         @media (max-width: 820px){
           /* fonte 16px evita o zoom automatico do Android/iOS ao focar um campo */
           .ct-cell input, .ct-panel input, .ct-panel textarea{font-size:16px}
-          .ct-btn{padding:11px 14px}
-          h1{font-size:32px !important}
+          .ct-btn{padding:12px 15px}
+          h1{font-size:30px !important}
+          .ct-panel{border-radius:12px}
         }
-        .ct-cell input::placeholder{color:var(--muted);opacity:.55}
-        .ct-cell input:focus{background:var(--focus);box-shadow:inset 0 -1px 0 var(--red)}
-
-        .ct-item{transition:background .1s linear}
-        .ct-item:hover{background:var(--hover)}
-
-        .ct-btn{font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;border-radius:0;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;transition:all .12s linear;white-space:nowrap}
-        .ct-btn-solid{background:var(--text);border:1px solid var(--text);color:var(--ink)}
-        .ct-btn-solid:hover{background:transparent;color:var(--text)}
-        .ct-btn-line{background:transparent;border:1px solid var(--line);color:var(--muted)}
-        .ct-btn-line:hover{border-color:var(--text);color:var(--text)}
-        .ct-btn-red{background:transparent;border:1px solid var(--red);color:var(--red)}
-        .ct-btn-red:hover{background:var(--red);color:#fff}
-
-        @keyframes ct-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-        button{cursor:pointer;font-family:inherit}
-        input,select,textarea{font-family:inherit}
-        :focus-visible{outline:1px solid var(--red);outline-offset:2px}
       `}</style>
 
       <Grain t={t} dark={theme === "dark"} />
+      {calcAberta && <Calculadora t={t} onFechar={() => setCalcAberta(false)} />}
 
       {!mobile && (
       <aside style={{ width: 230, borderRight: `1px solid ${t.line}`, padding: "22px 12px 16px", display: "flex", flexDirection: "column", gap: 18, flexShrink: 0, position: "relative", zIndex: 1, background: t.ink }}>
@@ -534,6 +550,9 @@ export default function CasinoTracker() {
 
         <div className="ct-rule" />
 
+        <button onClick={() => setCalcAberta(true)} className="ct-btn ct-btn-line" style={{ justifyContent: "center" }}>
+          <Calculator size={13} /> Calculadora
+        </button>
         <button onClick={toggleTheme} className="ct-btn ct-btn-line" style={{ justifyContent: "center" }}>
           {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
           {theme === "dark" ? "Claro" : "Escuro"}
@@ -548,6 +567,7 @@ export default function CasinoTracker() {
           extras={mobile ? [
             { id: "__nova", icon: <Plus size={14} />, title: "Nova operação", onClick: () => setNewOpMode(true) },
             { id: "__tema", icon: theme === "dark" ? <Sun size={14} /> : <Moon size={14} />, title: "Tema", onClick: toggleTheme },
+            { id: "__calc", icon: <Calculator size={14} />, title: "Calculadora", onClick: () => setCalcAberta(true) },
           ] : null} />
         {mobile && newOpMode && (
           <div style={{ marginBottom: 18 }}>
@@ -580,17 +600,17 @@ function Grain({ t, dark }) {
   return (
     <div aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: 0, background: t.ink }} />
+      {/* clarão frio no alto, dá profundidade sem sujar o fundo */}
+      <div style={{ position: "absolute", inset: 0, background: dark
+        ? "radial-gradient(120% 70% at 50% -18%, rgba(52,211,153,.07) 0%, rgba(52,211,153,0) 55%)"
+        : "radial-gradient(120% 70% at 50% -18%, rgba(14,159,110,.06) 0%, rgba(14,159,110,0) 55%)" }} />
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        width: "min(78vh, 78vw)", opacity: dark ? 0.030 : 0.045, display: "flex" }}>
+        width: "min(70vh, 70vw)", opacity: dark ? 0.014 : 0.03, display: "flex" }}>
         <Skull size="100%" color={dark ? "#FFFFFF" : "#0A0A0A"} style={{ width: "100%", height: "auto" }} />
       </div>
-      <div style={{ position: "absolute", inset: 0,
-        background: dark
-          ? "radial-gradient(ellipse 75% 65% at 50% 45%, transparent 20%, rgba(0,0,0,0.75) 100%)"
-          : "radial-gradient(ellipse 80% 70% at 50% 45%, transparent 30%, rgba(10,10,10,0.10) 100%)" }} />
-      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: dark ? 0.13 : 0.07 }}>
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: dark ? 0.05 : 0.025 }}>
         <filter id="ct-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" />
           <feColorMatrix type="saturate" values="0" />
         </filter>
         <rect width="100%" height="100%" filter="url(#ct-grain)" />
@@ -601,8 +621,8 @@ function Grain({ t, dark }) {
 
 function TabBar({ t, tabs, activeId, onPick, extras, mobile }) {
   return (
-    <div className="ct-scroll" style={{ display: "flex", overflowX: "auto", borderBottom: `1px solid ${t.line}`,
-      marginBottom: mobile ? 18 : 26, flexShrink: 0,
+    <div className="ct-scroll" style={{ display: "flex", gap: 4, overflowX: "auto", borderBottom: `1px solid ${t.line}`,
+      paddingBottom: 10, marginBottom: mobile ? 20 : 28, flexShrink: 0,
       position: mobile ? "sticky" : "static", top: 0, zIndex: 5, background: t.ink,
       margin: mobile ? "0 -13px 18px" : undefined, padding: mobile ? "0 8px" : undefined }}>
       {tabs.map((tab) => {
@@ -610,12 +630,14 @@ function TabBar({ t, tabs, activeId, onPick, extras, mobile }) {
         return (
           <button key={tab.id} onClick={() => onPick(tab)} title={tab.label}
             style={{
-              display: "flex", alignItems: "center", gap: 7, padding: "13px 16px",
-              border: "none", background: "transparent",
-              borderBottom: `2px solid ${on ? t.red : "transparent"}`,
+              display: "flex", alignItems: "center", gap: 7, padding: "9px 15px",
+              border: `1px solid ${on ? t.line : "transparent"}`, borderRadius: 10,
+              background: on ? t.panel : "transparent",
+              boxShadow: on ? `inset 0 1px 0 ${t.sheen}` : "none",
               color: on ? t.text : t.muted,
-              fontSize: 11, fontWeight: 700, letterSpacing: 1.3,
-              textTransform: "uppercase", whiteSpace: "nowrap", flexShrink: 0, marginBottom: -1,
+              fontSize: 11, fontWeight: 700, letterSpacing: 1.2,
+              textTransform: "uppercase", whiteSpace: "nowrap", flexShrink: 0,
+              transition: "all .16s ease",
             }}>
             {tab.icon}{tab.label}
           </button>
@@ -632,56 +654,236 @@ function TabBar({ t, tabs, activeId, onPick, extras, mobile }) {
   );
 }
 
-/* barras do lucro diário — SVG puro, sem biblioteca */
-function BarrasDia({ t, serie }) {
-  if (!serie.length) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "22px 0" }}>
-        <Skull size={28} color={t.line} />
-        <span style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1.1 }}>
-          NENHUM DIA COM MOVIMENTO REGISTRADO
-        </span>
-      </div>
-    );
+
+
+/* mede a largura real do espaço disponível, para o gráfico desenhar 1:1
+   em vez de esticar junto com a tela */
+function useLargura(minimo = 300) {
+  const ref = useRef(null);
+  const [larg, setLarg] = useState(minimo);
+  useEffect(() => {
+    const alvo = ref.current;
+    if (!alvo) return;
+    const medir = () => setLarg(Math.max(minimo, Math.round(alvo.clientWidth)));
+    medir();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(medir);
+      ro.observe(alvo);
+      return () => ro.disconnect();
+    }
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [minimo]);
+  return [ref, larg];
+}
+
+
+/* linha do lucro por dia — SVG puro */
+function LinhaDia({ t, serie }) {
+  if (serie.length < 1) {
+    return <div style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>SEM MOVIMENTO REGISTRADO</div>;
   }
-
-  const W = 720, H = 190, padL = 8, padR = 8, padT = 14, padB = 26;
-  const valores = serie.map((d) => d[1]);
-  const maxAbs = Math.max(1, ...valores.map((v) => Math.abs(v)));
-  const areaW = W - padL - padR;
-  const areaH = H - padT - padB;
-  const passo = areaW / serie.length;
-  const larg = Math.min(38, passo * 0.62);
-  const temNeg = valores.some((v) => v < 0);
-  /* linha do zero: no rodapé quando tudo é positivo, no meio quando há prejuízo */
-  const zeroY = temNeg ? padT + areaH / 2 : padT + areaH;
-  const escala = temNeg ? (areaH / 2) / maxAbs : areaH / maxAbs;
-
+  const [caixa, W] = useLargura(320);
+  const compacto = W < 560;
+  const H = compacto ? 190 : 250;
+  /* espaço à esquerda calculado pela largura do rótulo, senão o "R$" fica cortado */
+  const padL = compacto ? 62 : 82, padR = 16, padT = 20, padB = 30;
+  const vals = serie.map((d) => d[1]);
+  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
+  const span = (max - min) || 1;
+  const aw = W - padL - padR, ah = H - padT - padB;
+  const px = (i) => serie.length === 1 ? padL + aw / 2 : padL + (i * aw) / (serie.length - 1);
+  const py = (v) => padT + ah - ((v - min) / span) * ah;
+  const pts = serie.map((d, i) => `${px(i)},${py(d[1])}`).join(" ");
+  const area = `${padL},${py(min)} ${pts} ${px(serie.length - 1)},${py(min)}`;
+  const ticks = [max, max - span / 3, max - (2 * span) / 3, min];
   return (
-    <div style={{ overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", minWidth: 460, height: "auto", display: "block" }}>
-        <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke={t.line} strokeWidth="1" />
-        {serie.map((d, i) => {
-          const v = d[1];
-          const alt = Math.max(1.5, Math.abs(v) * escala);
+    <div ref={caixa} style={{ width: "100%" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
+        <defs>
+          <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={t.green} stopOpacity="0.34" />
+            <stop offset="100%" stopColor={t.green} stopOpacity="0" />
+          </linearGradient>
+          <filter id="brilho" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="4" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <text x={padL - 12} y={padT - 7} textAnchor="end" fontFamily="'JetBrains Mono', monospace"
+          fontSize={compacto ? 9 : 10} fill={t.muted} opacity="0.75">R$</text>
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line x1={padL} y1={py(v)} x2={W - padR} y2={py(v)} stroke={t.line} strokeDasharray="3 5" />
+            <text x={padL - 12} y={py(v) + 4} textAnchor="end" fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 10 : 11} fill={t.muted}>
+              {Math.abs(v) >= 100000 ? `${(v / 1000).toFixed(0)} mil`
+                : Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1).replace(".", ",")} mil`
+                : v.toFixed(0)}
+            </text>
+          </g>
+        ))}
+        <polygon points={area} fill="url(#gd)" />
+        <polyline points={pts} fill="none" stroke={t.green} strokeWidth="2.5"
+          strokeLinejoin="round" strokeLinecap="round" filter="url(#brilho)" />
+        {serie.map((d, i) => (
+          <circle key={d[0]} cx={px(i)} cy={py(d[1])} r={compacto ? 3 : 3.6} fill={t.green} filter="url(#brilho)"><title>{`${fmtDia(d[0])} — ${fmtBRL(d[1])}`}</title></circle>
+        ))}
+        <text x={padL} y={H - 9} fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 10 : 11} fill={t.muted}>{serie[0][0].slice(8, 10)}/{serie[0][0].slice(5, 7)}</text>
+        <text x={W - padR} y={H - 9} textAnchor="end" fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 10 : 11} fill={t.muted}>
+          {serie[serie.length - 1][0].slice(8, 10)}/{serie[serie.length - 1][0].slice(5, 7)}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/* barras do lucro por operação, com o valor em cima */
+function BarrasOperacao({ t, dados }) {
+  if (!dados.length) {
+    return <div style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>SEM MOVIMENTO REGISTRADO</div>;
+  }
+  const [caixa, W] = useLargura(320);
+  const compacto = W < 560;
+  const H = compacto ? 210 : 260;
+  const padT = 30, padB = 46, padL = 14, padR = 14;
+  const vals = dados.map((d) => d.value);
+  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
+  const span = (max - min) || 1;
+  const aw = W - padL - padR, ah = H - padT - padB;
+  const passo = aw / dados.length;
+  const larg = Math.min(compacto ? 34 : 56, passo * 0.52);
+  const y0 = padT + ah - ((0 - min) / span) * ah;
+  const rotulo = (v) => Math.abs(v) >= 100000 ? `R$ ${(v / 1000).toFixed(0)} mil`
+    : Math.abs(v) >= 1000 ? `R$ ${(v / 1000).toFixed(1).replace(".", ",")} mil`
+    : fmtBRL(v);
+  return (
+    <div ref={caixa} style={{ width: "100%" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
+        <defs>
+          <filter id="brilhoBarra" x="-60%" y="-40%" width="220%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="barraVerde" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={t.green} stopOpacity="1" />
+            <stop offset="100%" stopColor={t.green} stopOpacity="0.45" />
+          </linearGradient>
+          <linearGradient id="barraVermelha" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={t.red} stopOpacity="1" />
+            <stop offset="100%" stopColor={t.red} stopOpacity="0.45" />
+          </linearGradient>
+        </defs>
+        <line x1={padL} y1={y0} x2={W - padR} y2={y0} stroke={t.line} />
+        {dados.map((d, i) => {
+          const yv = padT + ah - ((d.value - min) / span) * ah;
+          const alt = Math.max(2, Math.abs(y0 - yv));
           const x = padL + i * passo + (passo - larg) / 2;
-          const y = v >= 0 ? zeroY - alt : zeroY;
-          const cor = v < 0 ? t.red : t.text;
-          const dia = d[0].slice(8, 10);
+          const y = d.value >= 0 ? yv : y0;
+          const cor = d.value < 0 ? t.red : t.green;
           return (
-            <g key={d[0]}>
-              <title>{`${fmtDia(d[0])} — ${fmtBRL(v)}`}</title>
-              <rect x={x} y={y} width={larg} height={alt} fill={cor} opacity={v < 0 ? 0.9 : 0.82} />
-              <text x={x + larg / 2} y={H - 9} textAnchor="middle"
-                fontFamily="'JetBrains Mono', monospace" fontSize="9.5" fill={t.muted}>{dia}</text>
+            <g key={d.name}>
+              <title>{`${d.name} — ${fmtBRL(d.value)}`}</title>
+              <rect x={x} y={y} width={larg} height={alt}
+                fill={d.value < 0 ? "url(#barraVermelha)" : "url(#barraVerde)"} filter="url(#brilhoBarra)" />
+              <text x={x + larg / 2} y={d.value >= 0 ? y - 8 : y + alt + 14} textAnchor="middle"
+                fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 9 : 10.5} fill={cor}>{rotulo(d.value)}</text>
+              <text x={x + larg / 2} y={H - 12} textAnchor="middle"
+                fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 9 : 10.5} fill={t.muted}>
+                {d.name.length > (compacto ? 7 : 12) ? d.name.slice(0, compacto ? 6 : 11) + "…" : d.name}
+              </text>
             </g>
           );
         })}
       </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontFamily: t.mono, fontSize: 10, color: t.muted, letterSpacing: 1 }}>
-        <span>{fmtDia(serie[0][0])}</span>
-        <span>maior barra: {fmtBRL(maxAbs)}</span>
-        <span>{fmtDia(serie[serie.length - 1][0])}</span>
+    </div>
+  );
+}
+
+
+/* calculadora simples, abre por cima da tela */
+function Calculadora({ t, onFechar }) {
+  const [visor, setVisor] = useState("0");
+  const [anterior, setAnterior] = useState(null);
+  const [op, setOp] = useState(null);
+  const [novo, setNovo] = useState(true);
+
+  const mostra = (n) => {
+    if (!isFinite(n)) return "erro";
+    const r = Math.round(n * 1e10) / 1e10;
+    return String(r).replace(".", ",");
+  };
+  const valor = () => parseNum(visor);
+
+  const digito = (d) => {
+    if (novo) { setVisor(d === "," ? "0," : d); setNovo(false); return; }
+    if (d === "," && visor.includes(",")) return;
+    setVisor(visor === "0" && d !== "," ? d : visor + d);
+  };
+  const resolve = (a, b, o) => o === "+" ? a + b : o === "−" ? a - b : o === "×" ? a * b : o === "÷" ? (b === 0 ? NaN : a / b) : b;
+  const operar = (o) => {
+    const v = valor();
+    if (anterior !== null && op && !novo) {
+      const r = resolve(anterior, v, op);
+      setVisor(mostra(r)); setAnterior(r);
+    } else setAnterior(v);
+    setOp(o); setNovo(true);
+  };
+  const igual = () => {
+    if (anterior === null || !op) return;
+    const r = resolve(anterior, valor(), op);
+    setVisor(mostra(r)); setAnterior(null); setOp(null); setNovo(true);
+  };
+  const limpar = () => { setVisor("0"); setAnterior(null); setOp(null); setNovo(true); };
+  const apagar = () => {
+    if (novo) return;
+    const v = visor.slice(0, -1);
+    setVisor(v === "" || v === "-" ? "0" : v);
+  };
+  const pct = () => { setVisor(mostra(valor() / 100)); setNovo(true); };
+  const inverter = () => setVisor(mostra(valor() * -1));
+
+  const tecla = (rot, aoTocar, destaque) => (
+    <button key={rot} onClick={aoTocar}
+      style={{ padding: "15px 0", border: `1px solid ${t.line}`, background: destaque === "op" ? t.focus : "transparent",
+        color: destaque === "ac" ? t.red : destaque === "eq" ? t.ink : t.text,
+        backgroundColor: destaque === "eq" ? t.green : destaque === "op" ? t.focus : "transparent",
+        fontFamily: t.mono, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+      {rot}
+    </button>
+  );
+
+  return (
+    <div onClick={onFechar}
+      style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,.72)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ width: "100%", maxWidth: 320, background: t.panel, border: `1px solid ${t.line}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${t.line}` }}>
+          <span className="ct-label">Calculadora</span>
+          <button onClick={onFechar} style={t.iconBtn} title="Fechar"><X size={14} /></button>
+        </div>
+        <div style={{ padding: "18px 16px", textAlign: "right", borderBottom: `1px solid ${t.line}`, minHeight: 74 }}>
+          {op && anterior !== null && (
+            <div style={{ fontFamily: t.mono, fontSize: 11, color: t.muted }}>{mostra(anterior)} {op}</div>
+          )}
+          <div style={{ fontFamily: t.mono, fontSize: 30, fontWeight: 700, color: t.text, wordBreak: "break-all", lineHeight: 1.2 }}>{visor}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: t.line, padding: 1 }}>
+          {tecla("AC", limpar, "ac")}
+          {tecla("±", inverter, "op")}
+          {tecla("%", pct, "op")}
+          {tecla("÷", () => operar("÷"), "op")}
+          {["7","8","9"].map((d) => tecla(d, () => digito(d)))}
+          {tecla("×", () => operar("×"), "op")}
+          {["4","5","6"].map((d) => tecla(d, () => digito(d)))}
+          {tecla("−", () => operar("−"), "op")}
+          {["1","2","3"].map((d) => tecla(d, () => digito(d)))}
+          {tecla("+", () => operar("+"), "op")}
+          {tecla("0", () => digito("0"))}
+          {tecla(",", () => digito(","))}
+          {tecla("⌫", apagar)}
+          {tecla("=", igual, "eq")}
+        </div>
       </div>
     </div>
   );
@@ -716,12 +918,12 @@ function InlineInput({ t, placeholder, initialValue, onSubmit, onCancel }) {
   );
 }
 
-function Panel({ t, label, right, children, pad = "16px 18px 18px" }) {
+function Panel({ t, label, right, children, pad = "18px 22px 22px" }) {
   return (
     <section className="ct-panel">
       {(label || right) && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "13px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "16px 22px" }}>
             <span className="ct-label">{label}</span>
             {right}
           </div>
@@ -736,14 +938,16 @@ function Panel({ t, label, right, children, pad = "16px 18px 18px" }) {
 /* Money: small muted R$, big digits, faded cents, + on gains */
 function Money({ t, value, tone, size = 24, sign = false }) {
   const n = Number(value) || 0;
-  const color = tone === "loss" || (tone === "auto" && n < 0) ? t.red : t.text;
+  const color = tone === "loss" || (tone === "auto" && n < 0) ? t.red
+    : (tone === "gain" || (tone === "vivo" && n > 0)) ? t.green : t.text;
   const digits = fmtBRL(Math.abs(n)).replace(/[^\d.,]/g, "");
   const [inteiro, centavos] = digits.split(",");
   const prefix = n < 0 ? "−" : sign && n > 0 ? "+" : "";
   return (
     <span style={{ fontFamily: t.mono, display: "inline-flex", alignItems: "baseline", gap: 4, lineHeight: 1 }}>
       <span style={{ fontSize: Math.round(size * 0.4), fontWeight: 500, color: t.muted }}>R$</span>
-      <span style={{ fontSize: size, fontWeight: 700, color, letterSpacing: -0.5 }}>{prefix}{inteiro}</span>
+      <span style={{ fontSize: size, fontWeight: 700, color, letterSpacing: -0.5,
+        textShadow: color === t.green ? `0 0 18px ${t.green}66` : color === t.red ? `0 0 16px ${t.red}44` : "none" }}>{prefix}{inteiro}</span>
       <span style={{ fontSize: Math.round(size * 0.48), fontWeight: 500, color, opacity: 0.4 }}>,{centavos || "00"}</span>
     </span>
   );
@@ -754,27 +958,19 @@ function Readout({ t, label, value, tone, size = 22, sign = false, raw }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
       <span className="ct-label">{label}</span>
       {raw !== undefined
-        ? <span style={{ fontFamily: t.mono, fontSize: size, fontWeight: 700, color: tone === "loss" ? t.red : t.text, letterSpacing: -0.3 }}>{raw}</span>
+        ? <span style={{ fontFamily: t.mono, fontSize: size, fontWeight: 700, color: tone === "loss" ? t.red : tone === "gain" ? t.green : t.text, letterSpacing: -0.3 }}>{raw}</span>
         : <Money t={t} value={value} tone={tone} size={size} sign={sign} />}
     </div>
   );
 }
 
-function StatLine({ t, label, value, danger, last }) {
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: last ? "none" : `1px solid ${t.line}` }}>
-      <span style={{ fontSize: 12, color: t.muted }}>{label}</span>
-      <span style={{ fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, color: danger ? t.red : t.text, textAlign: "right" }}>{value}</span>
-    </div>
-  );
-}
 
 function PageHead({ t, eyebrow, title, sub, actions }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
       <div style={{ minWidth: 0 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 2.2, color: t.muted }}>{eyebrow}</span>
-        <h1 style={{ fontFamily: t.display, fontSize: 46, letterSpacing: -0.5, textTransform: "uppercase", color: t.text, margin: "10px 0 0", lineHeight: .95, wordBreak: "break-word", display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+        <h1 style={{ fontFamily: t.display, fontSize: 40, letterSpacing: 0.5, textTransform: "uppercase", color: t.text, margin: "10px 0 0", lineHeight: .95, wordBreak: "break-word", display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
           <span>{title}<span style={{ color: t.red }}>.</span></span>
           <Skull size={26} color={t.line} style={{ marginBottom: 4 }} />
         </h1>
@@ -818,14 +1014,11 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
     }
   };
 
-  const escolhe = (obj, cmp) => Object.entries(obj).reduce((a, b) => (a === null || cmp(b[1], a[1]) ? b : a), null);
-  const melhorDia = escolhe(porDia, (x, y) => x > y);
-  const piorDia = escolhe(porDia, (x, y) => x < y);
-  const melhorMes = escolhe(porMes, (x, y) => x > y);
-  const piorMes = escolhe(porMes, (x, y) => x < y);
   const serie = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).slice(-14);
 
   const rank = porOperacao.filter((h) => h.value !== 0);
+  const lucroTotal = rank.filter((h) => h.value > 0).reduce((a, h) => a + h.value, 0);
+  const prejuizoTotal = rank.filter((h) => h.value < 0).reduce((a, h) => a - h.value, 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHead t={t} eyebrow="SOMA DE TODAS AS OPERAÇÕES" title="Dashboard"
@@ -876,7 +1069,7 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
             onChange={(e) => setTxt(e.target.value)}
             onFocus={(e) => { if (modo === "export") e.target.select(); }}
             placeholder={modo === "import" ? '{ "theme": "dark", ... }' : ""}
-            style={{ width: "100%", minHeight: 170, background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono, fontSize: 11.5, padding: 10, outline: "none", resize: "vertical", borderRadius: 0 }} />
+            style={{ width: "100%", minHeight: 170, background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono, fontSize: 11.5, padding: 10, outline: "none", resize: "vertical", borderRadius: 10 }} />
           {aviso && <p style={{ fontSize: 12, color: t.red, margin: "10px 0 0" }}>{aviso}</p>}
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             {modo === "import" && <button onClick={aplicar} className="ct-btn ct-btn-solid"><Check size={13} /> Aplicar</button>}
@@ -885,55 +1078,28 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
         </Panel>
       )}
 
-      <Panel t={t} label="Resultado"
-        right={<span style={{ fontFamily: t.mono, fontSize: 10, letterSpacing: 1.4, color: kpis.liquido >= 0 ? t.text : t.red }}>
-          ROI {fmtPctBR(kpis.roi)}
-        </span>}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: 24 }}>
-          <Readout t={t} label="Lucro líquido real (todas as operações)" value={totais.liquido} tone="auto" size={38} sign />
-          <Readout t={t} label={`Lucro líquido do mês · ${fmtMes(kpis.mesAtual)}`} value={porMes[kpis.mesAtual] || 0} tone="auto" size={26} sign />
-        </div>
-      </Panel>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))", gap: 10 }}>
-        <Panel t={t} label="Total depositado" pad="14px 18px 16px"><Money t={t} value={kpis.dep} size={19} /></Panel>
-        <Panel t={t} label="Total sacado" pad="14px 18px 16px"><Money t={t} value={kpis.saq} size={19} /></Panel>
-        <Panel t={t} label="Lucro bruto (sacado − depositado)" pad="14px 18px 16px"><Money t={t} value={kpis.saq - kpis.dep} tone="auto" size={19} sign /></Panel>
-        <Panel t={t} label="Programador (todas)" pad="14px 18px 16px"><Money t={t} value={totais.prog} size={19} /></Panel>
-        <Panel t={t} label="Lula (todas)" pad="14px 18px 16px"><Money t={t} value={totais.lula} size={19} /></Panel>
-        <Panel t={t} label="Pago aos clientes (todas)" pad="14px 18px 16px"><Money t={t} value={totais.pago} size={19} /></Panel>
-        <Panel t={t} label="Saldo em conta" pad="14px 18px 16px"><Money t={t} value={kpis.saldo} size={19} /></Panel>
+      <div className="grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+        <Panel t={t} label="Lucro total" pad="14px 18px 16px"><Money t={t} value={lucroTotal} tone="gain" size={22} /></Panel>
+        <Panel t={t} label="Prejuízo total" pad="14px 18px 16px"><Money t={t} value={prejuizoTotal} tone="loss" size={22} /></Panel>
+        <Panel t={t} label="Resultado líquido" pad="14px 18px 16px"><Money t={t} value={totais.liquido} tone="vivo" size={22} sign /></Panel>
+        <Panel t={t} label={`Lucro do mês · ${fmtMes(kpis.mesAtual)}`} pad="14px 18px 16px"><Money t={t} value={porMes[kpis.mesAtual] || 0} tone="vivo" size={22} sign /></Panel>
+        <Panel t={t} label="Planilhas (operações)" pad="14px 18px 16px">
+          <span style={{ fontFamily: t.mono, fontSize: 22, fontWeight: 700, color: t.text }}>{opsCount}</span>
+        </Panel>
       </div>
 
-      <Panel t={t} label="Lucro líquido por dia"
+      <Panel t={t} label="Lucro por dia"
         right={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>
-          {serie.length ? `ÚLTIMOS ${serie.length} DIAS COM MOVIMENTO` : "SEM MOVIMENTO"}
+          {serie.length ? `ÚLTIMOS ${serie.length} DIAS` : "SEM MOVIMENTO"}
         </span>}>
-        <BarrasDia t={t} serie={serie} />
+        <LinhaDia t={t} serie={serie} />
       </Panel>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 10, alignItems: "start" }}>
-        <Panel t={t} label="Leitura">
-          <StatLine t={t} label="Retorno sobre o investido" value={fmtPctBR(kpis.roi)} danger={kpis.roi < 0} />
-          <StatLine t={t} label="Melhor dia (líquido)" value={melhorDia ? `${fmtDia(melhorDia[0])} · ${fmtBRL(melhorDia[1])}` : "—"} />
-          <StatLine t={t} label="Pior dia (líquido)" value={piorDia ? `${fmtDia(piorDia[0])} · ${fmtBRL(piorDia[1])}` : "—"} danger={!!piorDia && piorDia[1] < 0} />
-          <StatLine t={t} label="Melhor mês (líquido)" value={melhorMes ? `${fmtMes(melhorMes[0])} · ${fmtBRL(melhorMes[1])}` : "—"} />
-          <StatLine t={t} label="Pior mês (líquido)" value={piorMes ? `${fmtMes(piorMes[0])} · ${fmtBRL(piorMes[1])}` : "—"} danger={!!piorMes && piorMes[1] < 0} last />
-        </Panel>
+      <Panel t={t} label="Lucro por planilha"
+        right={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>{rank.length} ATIVAS</span>}>
+        <BarrasOperacao t={t} dados={rank} />
+      </Panel>
 
-        <Panel t={t} label="Rendimento por operação"
-          right={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>{rank.length} ATIVAS</span>}>
-          {rank.length ? rank.map((h, i) => (
-            <div key={h.name} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "11px 0", borderBottom: i === rank.length - 1 ? "none" : `1px solid ${t.line}` }}>
-              <span style={{ fontFamily: t.mono, fontSize: 10, color: t.muted, width: 20, flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</span>
-              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</span>
-              <Money t={t} value={h.value} tone="auto" size={14} sign />
-            </div>
-          )) : (
-            <span style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1 }}>SEM MOVIMENTAÇÃO REGISTRADA</span>
-          )}
-        </Panel>
-      </div>
     </div>
   );
 }
@@ -982,10 +1148,13 @@ function calcOperacao(op, rows) {
     minhaParteCalc = suaParte;
   }
   const corteLula = baseLula > 0 ? baseLula * (lulaPct / 100) : 0;
-  /* fornecedor: mesma base do Lula */
+  /* o fornecedor tira a parte dele SÓ do SEU lucro — depois de tudo,
+     inclusive do 1º saque e do reembolso da perda garantida */
   const fornecedorNome = op.fornecedorNome || "";
   const fornecedorPct = parseNum(op.fornecedorPct);
-  const corteFornecedor = baseLula > 0 ? baseLula * (fornecedorPct / 100) : 0;
+  const seuLucroAntesFornecedor = suaParte - corteLula;
+  const baseFornecedor = seuLucroAntesFornecedor;
+  const corteFornecedor = seuLucroAntesFornecedor > 0 ? seuLucroAntesFornecedor * (fornecedorPct / 100) : 0;
   /* o que sobra pela conta do programador */
   const liquidoPeloCalculo = minhaParteCalc - corteLula - corteFornecedor;
   /* o que você recebe de fato */
@@ -994,7 +1163,7 @@ function calcOperacao(op, rows) {
   return { totalDep, totalSaq, totalSaq1, totalSaq2, lucroBruto, lucroSaque1, lucroSaque2,
     comissaoPct, lulaPct, perdaAtiva, perdaFixa, qtdContas, coberturaPerda,
     baseAcerto, corteProgramador, minhaParteCalc, baseLula, corteLula,
-    fornecedorNome, fornecedorPct, corteFornecedor,
+    fornecedorNome, fornecedorPct, corteFornecedor, baseFornecedor,
     liquidoPeloCalculo, totalPago, lucroLiquido };
 }
 
@@ -1212,13 +1381,15 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
         } />
 
       {/* abas internas da operação */}
-      <div className="ct-scroll" style={{ display: "flex", overflowX: "auto", borderBottom: `1px solid ${t.line}` }}>
+      <div className="ct-scroll" style={{ display: "flex", gap: 4, overflowX: "auto", borderBottom: `1px solid ${t.line}`, paddingBottom: 10 }}>
         {[["contas", "Contas"], ["fornecedor", "Fornecedor"], ["total", "Total"]].map(([id, rot]) => (
           <button key={id} onClick={() => setSub(id)}
-            style={{ padding: "11px 16px", border: "none", background: "transparent", marginBottom: -1,
-              borderBottom: `2px solid ${sub === id ? t.red : "transparent"}`,
-              color: sub === id ? t.text : t.muted,
-              fontSize: 11, fontWeight: 700, letterSpacing: 1.3, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+            style={{ padding: "9px 15px", borderRadius: 10,
+              border: `1px solid ${sub === id ? t.line : "transparent"}`,
+              background: sub === id ? t.panel : "transparent",
+              boxShadow: sub === id ? `inset 0 1px 0 ${t.sheen}` : "none",
+              color: sub === id ? t.text : t.muted, transition: "all .16s ease",
+              fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", whiteSpace: "nowrap" }}>
             {rot}
           </button>
         ))}
@@ -1342,21 +1513,78 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
 
 
 /* Campo de porcentagem: digita livre, aceita vírgula, salva ao sair */
-/* caveira desenhada à mão — mesma forma em todas as escalas */
+/* caveira com volume: luz no alto à esquerda, órbitas fundas e luz refletida embaixo */
+let skullSeq = 0;
+const SKULL_D = "M32 3 C16.6 3 5 15.2 5 30 C5 37.4 7.9 43.4 12.4 47.4 " +
+  "C13.6 48.5 14.2 49.6 14.4 51.2 L15.1 56.6 C15.5 59.2 17.6 61 20.2 61 " +
+  "L43.8 61 C46.4 61 48.5 59.2 48.9 56.6 L49.6 51.2 C49.8 49.6 50.4 48.5 51.6 47.4 " +
+  "C56.1 43.4 59 37.4 59 30 C59 15.2 47.4 3 32 3 Z";
+
 function Skull({ size = 16, color = "currentColor", style }) {
+  const [n] = useState(() => ++skullSeq);
+  const vol = `sk-vol-${n}`, orb = `sk-orb-${n}`, cut = `sk-cut-${n}`, sfz = `sk-sfz-${n}`;
   return (
-    <svg width={size} height={typeof size === "number" ? size : size} viewBox="0 0 64 64" fill={color} style={style} aria-hidden="true">
-      <path fillRule="evenodd" clipRule="evenodd" d="
-        M32 5 C17.1 5 5 16.6 5 31 c0 6.6 2.6 12.6 6.8 17.2 V54 c0 3.3 2.7 6 6 6 h28.4 c3.3 0 6-2.7 6-6 v-5.8
-        C56.4 43.6 59 37.6 59 31 59 16.6 46.9 5 32 5 Z
-        M22.4 22.6 c-4.4 0-7.9 3.7-7.9 8.2 0 4.5 3.5 8.2 7.9 8.2 4.4 0 7.9-3.7 7.9-8.2 0-4.5-3.5-8.2-7.9-8.2 Z
-        M41.6 22.6 c-4.4 0-7.9 3.7-7.9 8.2 0 4.5 3.5 8.2 7.9 8.2 4.4 0 7.9-3.7 7.9-8.2 0-4.5-3.5-8.2-7.9-8.2 Z
-        M32 39.5 L37.4 49 H26.6 Z
-        M18.2 49.6 h27.6 v2 H18.2 Z
-        M24.6 53 h2.4 v7 h-2.4 Z
-        M30.8 53 h2.4 v7 h-2.4 Z
-        M37 53 h2.4 v7 H37 Z
-      " />
+    <svg width={size} height={size} viewBox="0 0 64 64" style={style} aria-hidden="true">
+      <defs>
+        {/* volume do crânio */}
+        <radialGradient id={vol} cx="34%" cy="22%" r="82%">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.50" />
+          <stop offset="30%" stopColor="#fff" stopOpacity="0.10" />
+          <stop offset="60%" stopColor="#000" stopOpacity="0" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0.30" />
+        </radialGradient>
+        {/* fundo da órbita: escuro no centro, aliviando na borda */}
+        <radialGradient id={orb} cx="46%" cy="38%" r="68%">
+          <stop offset="0%" stopColor="#000" stopOpacity="0.97" />
+          <stop offset="72%" stopColor="#000" stopOpacity="0.86" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0.55" />
+        </radialGradient>
+        <clipPath id={cut}><path d={SKULL_D} /></clipPath>
+        <filter id={sfz} x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="1.6" />
+        </filter>
+      </defs>
+
+      {/* base */}
+      <path d={SKULL_D} fill={color} />
+
+      {/* modelagem, presa ao contorno */}
+      <g clipPath={`url(#${cut})`}>
+        <rect x="0" y="0" width="64" height="64" fill={`url(#${vol})`} />
+        {/* têmporas afundadas */}
+        <ellipse cx="10" cy="30" rx="7" ry="12" fill="#000" opacity="0.12" filter={`url(#${sfz})`} />
+        <ellipse cx="54" cy="30" rx="7" ry="12" fill="#000" opacity="0.17" filter={`url(#${sfz})`} />
+        {/* maçãs do rosto */}
+        <ellipse cx="18" cy="43" rx="8" ry="4.5" fill="#000" opacity="0.13" filter={`url(#${sfz})`} />
+        <ellipse cx="46" cy="43" rx="8" ry="4.5" fill="#000" opacity="0.15" filter={`url(#${sfz})`} />
+        {/* brilho da testa */}
+        <ellipse cx="24" cy="14" rx="11" ry="7" fill="#fff" opacity="0.30" filter={`url(#${sfz})`} />
+        {/* sombra sob o maxilar */}
+        <ellipse cx="32" cy="62" rx="20" ry="7" fill="#000" opacity="0.20" filter={`url(#${sfz})`} />
+      </g>
+
+      {/* órbitas */}
+      <g>
+        <ellipse cx="21.2" cy="26.5" rx="9.6" ry="10.2" fill={`url(#${orb})`} />
+        <ellipse cx="42.8" cy="26.5" rx="9.6" ry="10.2" fill={`url(#${orb})`} />
+        {/* luz refletida na borda de baixo da órbita */}
+        <path d="M13.2 30.5 a9.6 10.2 0 0 0 16 3.6" fill="none" stroke={color} strokeOpacity="0.30" strokeWidth="1.5" />
+        <path d="M34.8 30.5 a9.6 10.2 0 0 0 16 3.6" fill="none" stroke={color} strokeOpacity="0.24" strokeWidth="1.5" />
+      </g>
+
+      {/* nariz */}
+      <path d="M32 38.2 L37.4 49 H26.6 Z" fill="#000" opacity="0.92" />
+      <path d="M32 40.5 L35.6 48.2 H28.4 Z" fill="#000" opacity="0.45" />
+
+      {/* maxilar e dentes */}
+      <rect x="15.4" y="50.4" width="33.2" height="1.7" fill="#000" opacity="0.85" />
+      {[22.5, 27.6, 32.7, 37.8].map((x) => (
+        <rect key={x} x={x} y="52.6" width="1.5" height="8.4" fill="#000" opacity="0.7" />
+      ))}
+
+      {/* luz de contorno na esquerda */}
+      <path d={SKULL_D} fill="none" stroke="#fff" strokeOpacity="0.22" strokeWidth="0.9"
+        strokeDasharray="46 120" strokeDashoffset="6" />
     </svg>
   );
 }
@@ -1420,7 +1648,7 @@ function TextoInput({ t, label, value, placeholder, onChange, width = 130 }) {
           if (e.key === "Escape") { setDraft(null); e.currentTarget.blur(); }
         }}
         style={{ width, background: t.focus, border: `1px solid ${editando ? t.red : t.line}`, color: t.text,
-          fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, padding: "6px 8px", outline: "none", borderRadius: 0 }} />
+          fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, padding: "6px 8px", outline: "none", borderRadius: 10 }} />
     </div>
   );
 }
@@ -1541,7 +1769,7 @@ function ContasView({ t, contas, addConta, updateConta, deleteConta }) {
             O navegador bloqueou a cópia automática. Selecione o texto e copie com Ctrl/Cmd+C.
           </p>
           <textarea readOnly value={fallbackText} onFocus={(e) => e.target.select()}
-            style={{ width: "100%", minHeight: 150, background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono, fontSize: 12, padding: 10, outline: "none", resize: "vertical", borderRadius: 0 }} />
+            style={{ width: "100%", minHeight: 150, background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono, fontSize: 12, padding: 10, outline: "none", resize: "vertical", borderRadius: 10 }} />
           <button onClick={() => setFallbackText(null)} className="ct-btn ct-btn-line" style={{ marginTop: 10 }}>Fechar</button>
         </Panel>
       )}
@@ -1603,17 +1831,22 @@ function ContasView({ t, contas, addConta, updateConta, deleteConta }) {
 
 function T(theme) {
   const dark = theme === "dark";
-  const line = dark ? "#161616" : "#E0E0DA";
-  const muted = dark ? "#5C5C57" : "#76766F";
-  const text = dark ? "#E4E4DD" : "#0A0A0A";
+  /* borda quase invisível: separa sem cortar */
+  const line = dark ? "rgba(255,255,255,.07)" : "rgba(10,12,20,.09)";
+  const edge = dark ? "rgba(255,255,255,.20)" : "rgba(10,12,20,.26)";
+  const muted = dark ? "#7C8089" : "#6B7078";
+  const text = dark ? "#ECEDEF" : "#0D0F14";
 
   return {
-    ink: dark ? "#000000" : "#F4F4F0",
-    panel: dark ? "#060606" : "#FFFFFF",
-    line, muted, text,
-    hover: dark ? "#0D0D0D" : "#EDEDE7",
-    focus: dark ? "#111111" : "#E9E9E3",
-    red: dark ? "#D42314" : "#D92B20",
+    /* nem preto puro nem cinza: um grafite levemente frio, que descansa a vista */
+    ink: dark ? "#08090C" : "#F6F7F8",
+    panel: dark ? "#0E1014" : "#FFFFFF",
+    line, edge, muted, text,
+    sheen: dark ? "rgba(255,255,255,.045)" : "rgba(255,255,255,.9)",
+    hover: dark ? "rgba(255,255,255,.035)" : "rgba(10,12,20,.035)",
+    focus: dark ? "rgba(255,255,255,.06)" : "rgba(10,12,20,.05)",
+    red: dark ? "#F0616D" : "#D92B45",
+    green: dark ? "#34D399" : "#0E9F6E",
 
     display: "'Anton', sans-serif",
     ui: "'Archivo', sans-serif",
@@ -1621,13 +1854,13 @@ function T(theme) {
 
     iconBtn: {
       background: "none", border: "none", color: muted, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 3, borderRadius: 0,
+      alignItems: "center", justifyContent: "center", padding: 5, borderRadius: 8,
     },
     th: {
-      textAlign: "left", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
-      letterSpacing: 1.6, color: muted, padding: "11px 8px", position: "sticky", top: 0,
-      background: dark ? "#060606" : "#FFFFFF", borderBottom: `1px solid ${line}`,
+      textAlign: "left", fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+      letterSpacing: 2, color: muted, padding: "13px 9px", position: "sticky", top: 0,
+      background: dark ? "#0E1014" : "#FFFFFF", borderBottom: `1px solid ${line}`,
     },
-    td: { padding: "2px 4px", verticalAlign: "middle" },
+    td: { padding: "3px 5px", verticalAlign: "middle" },
   };
 }

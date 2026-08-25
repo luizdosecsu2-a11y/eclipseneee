@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 export function installStorageBridge(user) {
   window.storage = {
     async get(key) {
+      // Estado de navegação continua local para não interferir no layout/comportamento visual.
       if (key === "casino-tracker-ui") {
         const value = localStorage.getItem(key);
         return value ? { value } : null;
@@ -33,6 +34,7 @@ export function installStorageBridge(user) {
       if (key !== "casino-tracker-data") return { ok: true };
 
       const parsed = JSON.parse(value);
+
       const { error } = await supabase
         .from("casino_tracker_data")
         .upsert(

@@ -7,31 +7,35 @@ export default function App() {
   const [session, setSession] = useState(undefined);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [cadastro, setCadastro] = useState(false);
   const [erro, setErro] = useState("");
-  const [modoCadastro, setModoCadastro] = useState(false);
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nova) => {
-      setSession(nova ?? null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next ?? null);
     });
-    return () => listener.subscription.unsubscribe();
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   if (session === undefined) {
-    return <div style={loadingStyle}>CARREGANDO</div>;
+    return <TelaCarregando />;
   }
 
   if (session?.user) {
     installStorageBridge(session.user);
     return (
       <>
-        <div style={topStyle}>
-          <span>{session.user.email}</span>
-          <button style={logoutStyle} onClick={() => supabase.auth.signOut()}>SAIR</button>
-        </div>
         <CasinoTracker />
+        <button
+          type="button"
+          onClick={() => supabase.auth.signOut()}
+          title={session.user.email || "Sair"}
+          style={logoutStyle}
+        >
+          SAIR
+        </button>
       </>
     );
   }
@@ -41,17 +45,17 @@ export default function App() {
     setErro("");
     setCarregando(true);
     try {
-      const result = modoCadastro
+      const result = cadastro
         ? await supabase.auth.signUp({ email, password: senha })
         : await supabase.auth.signInWithPassword({ email, password: senha });
 
       if (result.error) throw result.error;
 
-      if (modoCadastro && !result.data.session) {
-        setErro("Conta criada. Se a confirmação de e-mail estiver ativada no Supabase, confirme o e-mail; se estiver desativada, faça login.");
+      if (cadastro && !result.data.session) {
+        setErro("Conta criada. Faça login para entrar.");
       }
-    } catch (e) {
-      setErro(e.message || "Não foi possível entrar.");
+    } catch (err) {
+      setErro(err?.message || "Não foi possível entrar.");
     } finally {
       setCarregando(false);
     }
@@ -60,25 +64,59 @@ export default function App() {
   return (
     <div style={pageStyle}>
       <form onSubmit={enviar} style={cardStyle}>
-        <div style={{fontSize:36,fontWeight:900,letterSpacing:2}}>ECL<span style={{color:"#e32b1d"}}>.</span></div>
-        <div style={{fontSize:10,letterSpacing:4,color:"#777",marginBottom:22}}>GESTOR</div>
-        <input style={inputStyle} type="email" placeholder="E-mail" value={email} onChange={e=>setEmail(e.target.value)} required />
-        <input style={inputStyle} type="password" placeholder="Senha" value={senha} onChange={e=>setSenha(e.target.value)} minLength={6} required />
-        {erro && <div style={{color:"#e32b1d",fontSize:12,lineHeight:1.4}}>{erro}</div>}
-        <button style={buttonStyle} disabled={carregando}>{carregando ? "AGUARDE..." : (modoCadastro ? "CRIAR CONTA" : "ENTRAR")}</button>
-        <button type="button" style={linkStyle} onClick={()=>{setModoCadastro(!modoCadastro);setErro("");}}>
-          {modoCadastro ? "Já tenho conta" : "Criar uma conta"}
+        <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 2 }}>
+          ECL<span style={{ color: "#F0616D" }}>.</span>
+        </div>
+        <div style={{ fontSize: 10, letterSpacing: 4, color: "#7C8089", marginBottom: 10 }}>
+          GESTOR
+        </div>
+        <input style={inputStyle} type="email" placeholder="E-mail" value={email}
+          onChange={(e) => setEmail(e.target.value)} required />
+        <input style={inputStyle} type="password" placeholder="Senha" value={senha}
+          onChange={(e) => setSenha(e.target.value)} minLength={6} required />
+        {erro && <div style={{ color: "#F0616D", fontSize: 12, lineHeight: 1.4 }}>{erro}</div>}
+        <button style={primaryStyle} disabled={carregando}>
+          {carregando ? "AGUARDE..." : cadastro ? "CRIAR CONTA" : "ENTRAR"}
+        </button>
+        <button type="button" style={linkStyle} onClick={() => { setCadastro(!cadastro); setErro(""); }}>
+          {cadastro ? "Já tenho conta" : "Criar uma conta"}
         </button>
       </form>
     </div>
   );
 }
 
-const pageStyle={minHeight:"100vh",display:"grid",placeItems:"center",background:"#050505",color:"#eee",fontFamily:"Arial,sans-serif"};
-const cardStyle={width:"min(360px,calc(100vw - 36px))",display:"flex",flexDirection:"column",gap:12,padding:28,border:"1px solid #222",background:"#090909"};
-const inputStyle={padding:"13px 12px",background:"#111",border:"1px solid #292929",color:"#fff",outline:"none"};
-const buttonStyle={padding:"13px",background:"#eee",color:"#050505",border:0,fontWeight:800,cursor:"pointer"};
-const linkStyle={background:"transparent",border:0,color:"#888",cursor:"pointer",padding:8};
-const loadingStyle={minHeight:"100vh",display:"grid",placeItems:"center",background:"#050505",color:"#888",fontFamily:"monospace",letterSpacing:3};
-const topStyle={position:"fixed",top:10,right:12,zIndex:9999,display:"flex",gap:10,alignItems:"center",fontFamily:"monospace",fontSize:10,color:"#777"};
-const logoutStyle={background:"transparent",border:"1px solid #333",color:"#888",padding:"6px 9px",cursor:"pointer"};
+function TelaCarregando() {
+  return <div style={loadingStyle}>CARREGANDO</div>;
+}
+
+const pageStyle = {
+  minHeight: "100vh", display: "grid", placeItems: "center",
+  background: "#08090C", color: "#ECEDEF", fontFamily: "Arial,sans-serif"
+};
+const cardStyle = {
+  width: "min(360px, calc(100vw - 36px))", display: "flex", flexDirection: "column",
+  gap: 12, padding: 28, border: "1px solid rgba(255,255,255,.07)", background: "#0E1014"
+};
+const inputStyle = {
+  padding: "13px 12px", background: "rgba(255,255,255,.035)",
+  border: "1px solid rgba(255,255,255,.10)", color: "#ECEDEF", outline: "none"
+};
+const primaryStyle = {
+  padding: 13, background: "#ECEDEF", color: "#08090C", border: 0,
+  fontWeight: 800, cursor: "pointer"
+};
+const linkStyle = {
+  padding: 8, background: "transparent", border: 0, color: "#7C8089", cursor: "pointer"
+};
+const loadingStyle = {
+  minHeight: "100vh", display: "grid", placeItems: "center",
+  background: "#08090C", color: "#7C8089", fontFamily: "monospace", letterSpacing: 3
+};
+// Fica no canto inferior para não empurrar, estreitar ou sobrepor a barra superior do JSX original.
+const logoutStyle = {
+  position: "fixed", right: 12, bottom: 12, zIndex: 9999,
+  background: "rgba(14,16,20,.88)", border: "1px solid rgba(255,255,255,.10)",
+  color: "#7C8089", borderRadius: 8, padding: "7px 10px",
+  fontSize: 10, fontWeight: 700, letterSpacing: 1.2, cursor: "pointer"
+};
