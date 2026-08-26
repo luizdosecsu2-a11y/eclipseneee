@@ -1,7 +1,151 @@
-import React,{useEffect,useState} from "react";import CasinoTracker from "./CasinoTracker";import {supabase} from "./supabase";import {installStorageBridge} from "./storageBridge";
-export default function App(){const [s,setS]=useState(undefined),[e,setE]=useState(""),[p,setP]=useState(""),[err,setErr]=useState("");
-useEffect(()=>{supabase.auth.getSession().then(({data})=>setS(data.session??null));const {data:x}=supabase.auth.onAuthStateChange((_a,n)=>setS(n??null));return()=>x.subscription.unsubscribe()},[]);
-if(s===undefined)return <div style={full}>CARREGANDO</div>;if(s?.user){installStorageBridge(s.user);return <><CasinoTracker/><button style={out} onClick={()=>supabase.auth.signOut()}>SAIR</button></>}
-async function login(x){x.preventDefault();setErr("");const r=await supabase.auth.signInWithPassword({email:e,password:p});if(r.error)setErr(r.error.message)}
-return <div style={full}><form onSubmit={login} style={card}><b style={{fontSize:32}}>ECL.</b><input style={inp} type="email" placeholder="E-mail" value={e} onChange={x=>setE(x.target.value)} required/><input style={inp} type="password" placeholder="Senha" value={p} onChange={x=>setP(x.target.value)} required/>{err&&<small style={{color:"#F0616D"}}>{err}</small>}<button style={btn}>ENTRAR</button></form></div>}
-const full={minHeight:"100vh",display:"grid",placeItems:"center",background:"#08090C",color:"#ECEDEF",fontFamily:"Arial"};const card={width:340,display:"flex",flexDirection:"column",gap:12,padding:28,background:"#0E1014"};const inp={padding:13,background:"#111318",border:"1px solid #292c32",color:"#fff"};const btn={padding:13,fontWeight:800};const out={position:"fixed",right:12,bottom:12,zIndex:9999,background:"#0E1014",border:"1px solid #333",color:"#888",padding:"7px 10px",borderRadius:8};
+import React, { useEffect, useState } from "react";
+import CasinoTracker from "./CasinoTracker";
+import { supabase } from "./supabase";
+import { installStorageBridge } from "./storageBridge";
+
+export default function App() {
+  const [session, setSession] = useState(undefined);
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined) {
+    return <div style={loading}>CARREGANDO</div>;
+  }
+
+  if (session?.user) {
+    installStorageBridge(session.user);
+
+    return (
+      <>
+        <CasinoTracker />
+        <button
+          type="button"
+          onClick={() => supabase.auth.signOut()}
+          style={logout}
+          title={session.user.email || "Sair"}
+        >
+          SAIR
+        </button>
+      </>
+    );
+  }
+
+  async function login(e) {
+    e.preventDefault();
+    setErro("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    });
+
+    if (error) setErro(error.message);
+  }
+
+  return (
+    <div style={page}>
+      <form onSubmit={login} style={card}>
+        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 2 }}>
+          ECL<span style={{ color: "#27F59A" }}>.</span>
+        </div>
+
+        <input
+          style={input}
+          type="email"
+          placeholder="E-mail"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+
+        <input
+          style={input}
+          type="password"
+          placeholder="Senha"
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          required
+        />
+
+        {erro && <small style={{ color: "#FF5364" }}>{erro}</small>}
+
+        <button style={button}>ENTRAR</button>
+      </form>
+    </div>
+  );
+}
+
+const page = {
+  minHeight: "100vh",
+  display: "grid",
+  placeItems: "center",
+  background: "#030806",
+  color: "#F3FFF8",
+  fontFamily: "Arial, sans-serif",
+};
+
+const card = {
+  width: "min(360px, calc(100vw - 36px))",
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  padding: 28,
+  background: "#07100C",
+  border: "1px solid rgba(39,245,154,.14)",
+  borderRadius: 16,
+};
+
+const input = {
+  padding: 13,
+  background: "rgba(255,255,255,.03)",
+  border: "1px solid rgba(39,245,154,.12)",
+  color: "#fff",
+  outline: "none",
+  borderRadius: 10,
+};
+
+const button = {
+  padding: 13,
+  border: 0,
+  borderRadius: 10,
+  background: "#27F59A",
+  color: "#021008",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const loading = {
+  minHeight: "100vh",
+  display: "grid",
+  placeItems: "center",
+  background: "#030806",
+  color: "#789086",
+  fontFamily: "monospace",
+  letterSpacing: 3,
+};
+
+const logout = {
+  position: "fixed",
+  right: 12,
+  bottom: 12,
+  zIndex: 9999,
+  background: "#07100C",
+  border: "1px solid rgba(39,245,154,.16)",
+  color: "#789086",
+  padding: "7px 10px",
+  borderRadius: 8,
+  cursor: "pointer",
+};

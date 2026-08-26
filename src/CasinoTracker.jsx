@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Plus, FileText, Trash2, Moon, Sun, LayoutDashboard, X, KeyRound,
-  Eye, EyeOff, Copy, Check, Pencil, RefreshCw, ChevronDown, ChevronRight, Calculator
+  Eye, EyeOff, Copy, Check, Pencil, RefreshCw, ChevronDown, ChevronRight, Calculator, Menu, Download, Upload
 } from "lucide-react";
 
 
@@ -72,7 +72,17 @@ const COLUMNS = [
   { key: "sacado2", label: "Saque 2", type: "number", width: 110 },
   { key: "pago", label: "Pago ao cliente", type: "number", width: 130 },
   { key: "obs", label: "Observações", type: "text", width: 170 },
+  { key: "recebido", label: "Recebi", type: "check", width: 96 },
 ];
+
+/* recebimento por saque. O campo antigo (recebido) vale para os dois,
+   então nada que você já marcou se perde. */
+const rec1 = (r) => (r.receb1 === undefined ? !!r.recebido : !!r.receb1);
+const rec2 = (r) => (r.receb2 === undefined ? !!r.recebido : !!r.receb2);
+const pend1 = (r) => parseNum(r.sacado1) > 0 && !rec1(r);
+const pend2 = (r) => parseNum(r.sacado2) > 0 && !rec2(r);
+const pendente = (r) => pend1(r) || pend2(r);
+const valorAReceber = (r) => (pend1(r) ? parseNum(r.sacado1) : 0) + (pend2(r) ? parseNum(r.sacado2) : 0);
 
 /* Aceita "1250", "1.250", "1250,50", "1.250,50", "R$ 1.250,50" e devolve número */
 const parseNum = (v) => {
@@ -122,12 +132,15 @@ export default function CasinoTracker() {
   const [loaded, setLoaded] = useState(false);
   const [activeOp, setActiveOp] = useState(null);
   const [view, setView] = useState("dashboard");
+  const [activeMes, setActiveMes] = useState(null);
   const [newOpMode, setNewOpMode] = useState(false);
-  const [renamingOp, setRenamingOp] = useState(null);
-  const [confirmDeleteOp, setConfirmDeleteOp] = useState(null);
+  const [renomeando, setRenomeando] = useState(false);
+  const [confirmarExcluir, setConfirmarExcluir] = useState(false);
 
   const mobile = useMobile();
   const [calcAberta, setCalcAberta] = useState(false);
+  const [oculto, setOculto] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
   const theme = data.theme || "dark";
   const t = T(theme);
 
@@ -148,7 +161,6 @@ export default function CasinoTracker() {
         const ui = await window.storage.get("casino-tracker-ui");
         if (ui && ui.value) {
           const u = JSON.parse(ui.value);
-          if (u.view) setView(u.view);
           if (u.activeSheet) setActiveOp(u.activeSheet);
         }
       } catch (e) {
@@ -220,6 +232,16 @@ export default function CasinoTracker() {
 
   const operacoes = data.sheets || [];
 
+  /* meses = as planilhas. Vêm dos métodos existentes + os criados na mão. */
+  const meses = useMemo(() => {
+    /* o mês corrente entra sempre — na virada do mês a planilha nova aparece sozinha */
+    const set = new Set([...(data.mesesExtras || []), mesAgora()]);
+    operacoes.forEach((o) => set.add(mesDoMetodo(o, data.rows[o.id] || [])));
+    return Array.from(set).sort();
+  }, [operacoes, data.rows, data.mesesExtras]);
+
+  const metodosDoMes = (m) => operacoes.filter((o) => mesDoMetodo(o, data.rows[o.id] || []) === m);
+
   const allRows = useMemo(() => {
     const out = [];
     Object.entries(data.rows || {}).forEach(([opId, rows]) => {
@@ -230,48 +252,38 @@ export default function CasinoTracker() {
     return out;
   }, [data.rows, data.sheets]);
 
-  const kpis = useMemo(() => {
-    let lucro = 0, prejuizo = 0, dep = 0, saq = 0;
-    const byDay = {}, byMonth = {};
-    allRows.forEach((r) => {
-      const depositado = parseNum(r.depositado);
-      const sacado = getSacado(r);
-      const net = sacado - depositado;
-      if (net >= 0) lucro += net; else prejuizo += -net;
-      dep += depositado;
-      saq += sacado;
-      const iso = typeof r.data === "string" && r.data.length >= 10 ? r.data.slice(0, 10) : null;
-      if (iso) {
-        byDay[iso] = (byDay[iso] || 0) + net;
-        byMonth[iso.slice(0, 7)] = (byMonth[iso.slice(0, 7)] || 0) + net;
-      }
-    });
-    const liquido = lucro - prejuizo;
-    const roi = dep > 0 ? (liquido / dep) * 100 : 0;
-    const pick = (obj, cmp) => Object.entries(obj).reduce((a, b) => (a === null || cmp(b[1], a[1]) ? b : a), null);
-    const bestDay = pick(byDay, (x, y) => x > y);
-    const worstDay = pick(byDay, (x, y) => x < y);
-    const bestMonth = pick(byMonth, (x, y) => x > y);
-    const worstMonth = pick(byMonth, (x, y) => x < y);
-    const mesAtual = todayISO().slice(0, 7);
-    const lucroMes = byMonth[mesAtual] || 0;
-    return {
-      liquido, dep, saq, saldo: dep - saq + liquido,
-      roi, ops: allRows.length,
-      bestDay, worstDay, bestMonth, worstMonth, mesAtual, lucroMes,
-    };
-  }, [allRows]);
+  const kpis = useMemo(() => ({
+    ops: allRows.length,
+    mesAtual: todayISO().slice(0, 7),
+  }), [allRows]);
 
   const totaisReais = useMemo(() => {
-    let liquido = 0, prog = 0, lula = 0, pago = 0;
+    let liquido = 0, prog = 0, lula = 0, pago = 0, aReceber = 0, qtdReceber = 0;
+    const contarPendentes = (linhas) => {
+      (linhas || []).forEach((r) => {
+        if (pendente(r)) { aReceber += valorAReceber(r); qtdReceber++; }
+      });
+    };
     (data.sheets || []).forEach((o) => {
       const c = calcOperacao(o, data.rows[o.id] || []);
       liquido += c.lucroLiquido;
       prog += c.corteProgramador;
       lula += c.corteLula;
       pago += c.totalPago;
+      contarPendentes(data.rows[o.id]);
+      (o.fornecedores || []).forEach((f) => {
+        const cf = calcOperacao({
+          comissao: f.comissao ?? 50, lulaPct: f.lulaPct ?? LULA_PADRAO,
+          perdaAtiva: !!f.perdaAtiva, perdaFixa: f.perdaFixa, fornecedorPct: f.pct,
+        }, f.rows || []);
+        liquido += cf.lucroLiquido;
+        prog += cf.corteProgramador;
+        lula += cf.corteLula;
+        pago += cf.totalPago;
+        contarPendentes(f.rows);
+      });
     });
-    return { liquido, prog, lula, pago };
+    return { liquido, prog, lula, pago, aReceber, qtdReceber };
   }, [data.sheets, data.rows]);
 
   const porMes = useMemo(() => liquidoPorPeriodo(data.sheets, data.rows, (iso) => iso.slice(0, 7)), [data.sheets, data.rows]);
@@ -287,7 +299,35 @@ export default function CasinoTracker() {
       .sort((a, b) => b.value - a.value);
   }, [allRows]);
 
-  const openOp = (id) => { setActiveOp(id); setView("op"); };
+
+  const abrirMes = (m) => {
+    setActiveMes(m);
+    const lista = metodosDoMes(m);
+    setActiveOp(lista.length ? lista[0].id : null);
+    setView("mes");
+  };
+
+
+
+  const updateOpMes = (id, mes) => {
+    persist({
+      ...data,
+      mesesExtras: (data.mesesExtras || []).includes(mes) ? data.mesesExtras : [...(data.mesesExtras || []), mes],
+      sheets: operacoes.map((o) => (o.id === id ? { ...o, mes } : o)),
+    });
+    setActiveMes(mes);
+  };
+
+  const addMes = () => {
+    const m = mesAgora();
+    if (!(data.mesesExtras || []).includes(m)) {
+      persist({ ...data, mesesExtras: [...(data.mesesExtras || []), m] });
+    }
+    setActiveMes(m);
+    const lista = metodosDoMes(m);
+    setActiveOp(lista.length ? lista[0].id : null);
+    setView("mes");
+  };
 
   const addOperacao = (name) => {
     if (!name.trim()) return;
@@ -298,21 +338,23 @@ export default function CasinoTracker() {
       folderId = uid();
       folders = [...folders, { id: folderId, name: "Geral", parent: null }];
     }
+    const m = activeMes || mesAgora();
     persist({
       ...data,
       folders,
-      sheets: [...(data.sheets || []), { id, name: name.trim(), folderId, comissao: 50 }],
+      mesesExtras: (data.mesesExtras || []).includes(m) ? data.mesesExtras : [...(data.mesesExtras || []), m],
+      sheets: [...(data.sheets || []), { id, name: name.trim(), folderId, comissao: 50, mes: m }],
       rows: { ...data.rows, [id]: [] },
     });
+    setActiveMes(m);
     setActiveOp(id);
-    setView("op");
+    setView("mes");
     setNewOpMode(false);
   };
 
   const renameOp = (id, name) => {
-    if (!name.trim()) { setRenamingOp(null); return; }
+    if (!name.trim()) return;
     persist({ ...data, sheets: operacoes.map((s) => (s.id === id ? { ...s, name: name.trim() } : s)) });
-    setRenamingOp(null);
   };
 
   const deleteOp = (id) => {
@@ -320,7 +362,10 @@ export default function CasinoTracker() {
     const rows = { ...data.rows };
     delete rows[id];
     persist({ ...data, sheets, rows });
-    if (activeOp === id) { setActiveOp(null); setView("dashboard"); }
+    if (activeOp === id) {
+      const restantes = sheets.filter((o) => mesDoMetodo(o, rows[o.id] || []) === activeMes);
+      setActiveOp(restantes.length ? restantes[0].id : null);
+    }
   };
 
   const updateOpComissao = (id, pct) => {
@@ -335,13 +380,8 @@ export default function CasinoTracker() {
     const val = Math.max(0, parseNum(v));
     persist({ ...data, sheets: operacoes.map((s) => (s.id === id ? { ...s, perdaFixa: val } : s)) });
   };
-  const updateOpFornecedorNome = (id, v) => {
-    persist({ ...data, sheets: operacoes.map((s) => (s.id === id ? { ...s, fornecedorNome: v } : s)) });
-  };
-  const updateOpFornecedorPct = (id, v) => {
-    const val = Math.max(0, Math.min(100, parseNum(v)));
-    persist({ ...data, sheets: operacoes.map((s) => (s.id === id ? { ...s, fornecedorPct: val } : s)) });
-  };
+
+
   /* --- fornecedores: cada um com contas e percentuais próprios --- */
   const mexerForn = (opId, fn) => {
     persist({ ...data, sheets: operacoes.map((o) => (o.id === opId ? { ...o, fornecedores: fn(o.fornecedores || []) } : o)) });
@@ -353,7 +393,7 @@ export default function CasinoTracker() {
     mexerForn(opId, (fs) => fs.map((f) => (f.id === fId ? { ...f, [campo]: valor } : f)));
   const deleteFornecedor = (opId, fId) => mexerForn(opId, (fs) => fs.filter((f) => f.id !== fId));
   const addFornRow = (opId, fId) => mexerForn(opId, (fs) => fs.map((f) => (f.id === fId
-    ? { ...f, rows: [...(f.rows || []), { id: uid(), data: todayISO(), conta: "", depositado: 0, sacado1: 0, sacado2: 0, pago: 0, obs: "" }] }
+    ? { ...f, rows: [...(f.rows || []), { id: uid(), data: todayISO(), conta: "", depositado: 0, sacado1: 0, sacado2: 0, pago: 0, obs: "", recebido: false }] }
     : f)));
   const updateFornCell = (opId, fId, rowId, key, value) => mexerForn(opId, (fs) => fs.map((f) => (f.id === fId
     ? { ...f, rows: (f.rows || []).map((r) => (r.id === rowId ? { ...r, [key]: value } : r)) }
@@ -373,6 +413,16 @@ export default function CasinoTracker() {
     persist({ ...data, sheets: operacoes.map((s) => (s.id === id ? { ...s, perdaAtiva: !!ativa } : s)) });
   };
 
+  const metodosAqui = activeMes ? metodosDoMes(activeMes) : [];
+  /* soma do mês: cada método com suas contas e seus fornecedores */
+  const liquidoDoMes = metodosAqui.reduce((acc, o) => {
+    const base = calcOperacao(o, data.rows[o.id] || []).lucroLiquido;
+    const forn = (o.fornecedores || []).reduce((a, f) => a + calcOperacao({
+      comissao: f.comissao ?? 50, lulaPct: f.lulaPct ?? LULA_PADRAO,
+      perdaAtiva: !!f.perdaAtiva, perdaFixa: f.perdaFixa, fornecedorPct: f.pct,
+    }, f.rows || []).lucroLiquido, 0);
+    return acc + base + forn;
+  }, 0);
   const currentRows = data.rows[activeOp] || [];
   const currentOp = operacoes.find((s) => s.id === activeOp);
 
@@ -381,7 +431,7 @@ export default function CasinoTracker() {
     persist({ ...data, rows: { ...data.rows, [activeOp]: rows } });
   };
   const addRow = () => {
-    const row = { id: uid(), data: todayISO(), conta: "", depositado: 0, sacado1: 0, sacado2: 0, pago: 0, obs: "" };
+    const row = { id: uid(), data: todayISO(), conta: "", depositado: 0, sacado1: 0, sacado2: 0, pago: 0, obs: "", recebido: false };
     persist({ ...data, rows: { ...data.rows, [activeOp]: [...currentRows, row] } });
   };
   const deleteRow = (rowId) => {
@@ -411,7 +461,7 @@ export default function CasinoTracker() {
 
   const cssVars = {
     "--ink": t.ink, "--panel": t.panel, "--line": t.line, "--red": t.red,
-    "--edge": t.edge, "--sheen": t.sheen, "--green": t.green,
+    "--edge": t.edge, "--sheen": t.sheen, "--green": t.green, "--veu": t.veu,
     "--text": t.text, "--muted": t.muted, "--hover": t.hover, "--focus": t.focus,
     "--display": t.display, "--ui": t.ui, "--mono": t.mono,
   };
@@ -419,7 +469,7 @@ export default function CasinoTracker() {
   const tabs = [
     { id: "dashboard", kind: "view", label: "Dashboard", icon: <LayoutDashboard size={13} /> },
     { id: "contas", kind: "view", label: "Contas", icon: <KeyRound size={13} /> },
-    ...operacoes.map((o) => ({ id: o.id, kind: "op", label: o.name, icon: <FileText size={13} /> })),
+    ...meses.map((m) => ({ id: m, kind: "mes", label: fmtMes(m), icon: <FileText size={13} /> })),
   ];
 
   return (
@@ -429,11 +479,19 @@ export default function CasinoTracker() {
 
         /* painel: canto suave, borda quase invisível e um fio de luz na aresta de cima */
         .ct-panel{
-          background:var(--panel);
+          background:linear-gradient(145deg,rgba(12,27,20,.94),rgba(5,12,9,.92));
           border:1px solid var(--line);
-          border-radius:14px;
-          box-shadow:inset 0 1px 0 var(--sheen), 0 1px 2px rgba(0,0,0,.5);
+          border-radius:16px;
+          box-shadow:inset 0 1px 0 var(--sheen), 0 14px 38px rgba(0,0,0,.18);
+          transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+          backdrop-filter:blur(12px);
+          -webkit-backdrop-filter:blur(12px);
         }
+        .ct-panel:hover{
+          border-color:var(--edge);
+          box-shadow:inset 0 1px 0 var(--sheen), 0 16px 40px rgba(0,0,0,.27), 0 0 26px rgba(39,245,154,.035);
+        }
+        .ct-label{margin-bottom:2px}
         .ct-label{font-size:9px;font-weight:600;letter-spacing:2.6px;text-transform:uppercase;color:var(--muted);display:block}
         .ct-rule{height:1px;background:var(--line)}
 
@@ -444,6 +502,7 @@ export default function CasinoTracker() {
 
         .ct-row{transition:background .14s ease}
         .ct-row:hover{background:var(--hover)}
+        .ct-cell{overflow:visible}
         .ct-cell input{width:100%;background:transparent;border:1px solid transparent;color:var(--text);
           font-family:var(--mono);font-size:12.5px;outline:none;padding:9px 9px;border-radius:8px;transition:all .14s ease}
         .ct-cell input::placeholder{color:var(--muted);opacity:.5}
@@ -455,13 +514,19 @@ export default function CasinoTracker() {
 
         .ct-btn{font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;border-radius:10px;
           display:inline-flex;align-items:center;gap:8px;padding:10px 16px;transition:all .16s ease;white-space:nowrap}
-        .ct-btn-solid{background:var(--text);border:1px solid var(--text);color:var(--ink)}
-        .ct-btn-solid:hover{opacity:.86;transform:translateY(-1px)}
-        .ct-btn-line{background:transparent;border:1px solid var(--line);color:var(--muted)}
-        .ct-btn-line:hover{border-color:var(--edge);color:var(--text);background:var(--hover)}
+        .ct-btn-solid{background:linear-gradient(135deg,var(--green),#0CB86C);border:1px solid rgba(116,255,190,.48);color:#021008;box-shadow:0 8px 24px rgba(39,245,154,.12)}
+        .ct-btn-solid:hover{filter:brightness(1.08);transform:translateY(-1px);box-shadow:0 10px 30px rgba(39,245,154,.18)}
+        .ct-btn-line{background:linear-gradient(180deg,rgba(255,255,255,.018),rgba(39,245,154,.018));border:1px solid var(--line);color:var(--muted)}
+        .ct-btn-line:hover{border-color:var(--edge);color:var(--text);background:var(--hover);box-shadow:0 0 18px rgba(39,245,154,.05)}
         .ct-btn-red{background:transparent;border:1px solid var(--line);color:var(--red)}
         .ct-btn-red:hover{border-color:var(--red);background:rgba(240,97,109,.08)}
         .ct-btn:active{transform:translateY(0)}
+
+        /* olhinho: some suave, sem tarja preta — os números continuam lá, só ilegíveis */
+        .ct-oculto .ct-money{filter:blur(9px);opacity:.55;user-select:none}
+        /* o gráfico inteiro, não só os rótulos: a própria linha entrega os valores */
+        .ct-oculto .ct-grafico{filter:blur(11px);opacity:.6;user-select:none}
+        .ct-money,.ct-grafico{transition:filter .45s cubic-bezier(.4,0,.2,1), opacity .45s cubic-bezier(.4,0,.2,1)}
 
         @keyframes ct-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
         button{cursor:pointer;font-family:inherit}
@@ -482,15 +547,13 @@ export default function CasinoTracker() {
       {calcAberta && <Calculadora t={t} onFechar={() => setCalcAberta(false)} />}
 
       {!mobile && (
-      <aside style={{ width: 230, borderRight: `1px solid ${t.line}`, padding: "22px 12px 16px", display: "flex", flexDirection: "column", gap: 18, flexShrink: 0, position: "relative", zIndex: 1, background: t.ink }}>
+      <aside style={{ width: 252, borderRight: `1px solid ${t.line}`, padding: "24px 14px 18px", display: "flex", flexDirection: "column", gap: 18, flexShrink: 0, position: "relative", zIndex: 1,
+        background: `linear-gradient(180deg, rgba(7,17,12,.98), rgba(3,8,6,.985))`,
+        boxShadow: "14px 0 44px rgba(0,0,0,.16)" }}>
         <div style={{ padding: "0 4px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Skull size={22} color={t.text} />
-            <span style={{ fontFamily: t.display, fontSize: 26, letterSpacing: 1, color: t.text, lineHeight: 1 }}>ECL</span>
-            <span style={{ width: 6, height: 6, background: t.red, display: "block", alignSelf: "flex-end", marginBottom: 4 }} />
-          </div>
+          <LogoECL t={t} />
           <div style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted, marginTop: 8 }}>
-            {operacoes.length} {operacoes.length === 1 ? "OPERAÇÃO" : "OPERAÇÕES"}
+            {operacoes.length} {operacoes.length === 1 ? "MÉTODO" : "MÉTODOS"}
           </div>
         </div>
 
@@ -502,50 +565,26 @@ export default function CasinoTracker() {
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
-          <span className="ct-label">Operações</span>
-          <button onClick={() => setNewOpMode(true)} style={t.iconBtn} title="Nova operação"><Plus size={13} /></button>
+          <span className="ct-label">Planilhas por mês</span>
         </div>
 
         <div className="ct-scroll" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-          {operacoes.map((o) => {
-            const on = activeOp === o.id && view === "op";
-            if (renamingOp === o.id) {
-              return (
-                <InlineInput key={o.id} t={t} placeholder="Nome da operação" initialValue={o.name}
-                  onSubmit={(v) => renameOp(o.id, v)} onCancel={() => setRenamingOp(null)} />
-              );
-            }
-            if (confirmDeleteOp === o.id) {
-              return (
-                <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 7px", border: `1px solid ${t.red}` }}>
-                  <span style={{ fontSize: 11, color: t.red, flex: 1 }}>Excluir?</span>
-                  <button onClick={() => { deleteOp(o.id); setConfirmDeleteOp(null); }} style={t.iconBtn} title="Confirmar"><Check size={12} color={t.red} /></button>
-                  <button onClick={() => setConfirmDeleteOp(null)} style={t.iconBtn} title="Cancelar"><X size={12} /></button>
-                </div>
-              );
-            }
+          {meses.map((m) => {
+            const on = activeMes === m && view === "mes";
+            const qtd = metodosDoMes(m).length;
             return (
-              <div key={o.id} className="ct-item" onClick={() => openOp(o.id)} title={`Abrir ${o.name}`}
+              <div key={m} className="ct-item" onClick={() => abrirMes(m)} title={`Abrir ${fmtMes(m)}`}
                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 8px", cursor: "pointer",
                   background: on ? t.hover : "transparent",
                   boxShadow: on ? `inset 2px 0 0 ${t.red}` : "none" }}>
                 <FileText size={12} color={on ? t.red : t.muted} />
-                <span style={{ flex: 1, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? t.text : t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.name}</span>
-                <button onClick={(e) => { e.stopPropagation(); setRenamingOp(o.id); }} style={t.iconBtn} title="Renomear"><Pencil size={10} /></button>
-                <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteOp(o.id); }} style={t.iconBtn} title="Excluir"><Trash2 size={10} /></button>
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? t.text : t.muted }}>{fmtMes(m)}</span>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.muted }}>{qtd}</span>
               </div>
             );
           })}
 
-          {newOpMode && (
-            <InlineInput t={t} placeholder="Nome da operação" onSubmit={addOperacao} onCancel={() => setNewOpMode(false)} />
-          )}
 
-          {operacoes.length === 0 && !newOpMode && (
-            <button onClick={() => setNewOpMode(true)} className="ct-btn ct-btn-line" style={{ justifyContent: "center", marginTop: 4 }}>
-              <Plus size={13} /> Nova operação
-            </button>
-          )}
         </div>
 
         <div className="ct-rule" />
@@ -560,36 +599,268 @@ export default function CasinoTracker() {
       </aside>
       )}
 
-      <main className="ct-scroll" style={{ flex: 1, padding: mobile ? "0 13px 60px" : "0 28px 44px", overflowX: "hidden", position: "relative", zIndex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      {mobile && (
+        <Gaveta t={t} aberta={menuAberto} onFechar={() => setMenuAberto(false)}
+          view={view} setView={setView} meses={meses} activeMes={activeMes}
+          abrirMes={abrirMes} addMes={addMes} contarMetodos={(m) => metodosDoMes(m).length}
+          theme={theme} toggleTheme={toggleTheme} />
+      )}
+
+      <main className="ct-scroll" style={{ flex: 1, overflowX: "hidden", position: "relative", zIndex: 1, minWidth: 0, display: "flex", flexDirection: "column",
+        padding: mobile ? "0 14px 64px" : "0 38px 64px", alignItems: "stretch" }}>
+        <div style={{ width: "100%", maxWidth: 1340, margin: "0 auto", display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {mobile && (
+          <BarraApp t={t} oculto={oculto} setOculto={setOculto}
+            onMenu={() => setMenuAberto(true)} onCalc={() => setCalcAberta(true)} />
+        )}
+        {!mobile && (
         <TabBar t={t} tabs={tabs} mobile={mobile}
-          activeId={view === "op" ? activeOp : view}
-          onPick={(tab) => (tab.kind === "op" ? openOp(tab.id) : setView(tab.id))}
+          activeId={view === "mes" ? activeMes : view}
+          onPick={(tab) => (tab.kind === "mes" ? abrirMes(tab.id) : setView(tab.id))}
           extras={mobile ? [
-            { id: "__nova", icon: <Plus size={14} />, title: "Nova operação", onClick: () => setNewOpMode(true) },
             { id: "__tema", icon: theme === "dark" ? <Sun size={14} /> : <Moon size={14} />, title: "Tema", onClick: toggleTheme },
             { id: "__calc", icon: <Calculator size={14} />, title: "Calculadora", onClick: () => setCalcAberta(true) },
           ] : null} />
-        {mobile && newOpMode && (
-          <div style={{ marginBottom: 18 }}>
-            <InlineInput t={t} placeholder="Nome da operação" onSubmit={addOperacao} onCancel={() => setNewOpMode(false)} />
-          </div>
         )}
-
         {view === "dashboard" ? (
-          <Dashboard t={t} kpis={kpis} porOperacao={porOperacao} totais={totaisReais} recarregar={recarregar} buscando={buscando} atualizado={data.atualizado} porMes={porMes} porDia={porDia} opsCount={operacoes.length} contasCount={contas.length} data={data} persist={persist} />
+          <Dashboard t={t} oculto={oculto} setOculto={setOculto} kpis={kpis} porOperacao={porOperacao} totais={totaisReais} recarregar={recarregar} buscando={buscando} porMes={porMes} porDia={porDia} data={data} persist={persist} />
         ) : view === "contas" ? (
           <ContasView t={t} contas={contas} addConta={addConta} updateConta={updateConta} deleteConta={deleteConta} />
         ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 22, minWidth: 0, paddingTop: 4 }}>
+            {/* a planilha do mês, com os métodos que rodaram nele */}
+            <div>
+              <h1 style={{ fontFamily: t.display, fontSize: mobile ? 30 : 40, letterSpacing: 0.5, textTransform: "uppercase",
+                color: t.text, margin: 0, lineHeight: .95 }}>
+                {fmtMes(activeMes)}<span style={{ color: t.red }}>.</span>
+              </h1>
+              {metodosAqui.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <span className="ct-label">Resultado do mês</span>
+                  <div style={{ marginTop: 8 }}>
+                    <Money t={t} value={liquidoDoMes} tone="vivo" size={28} sign />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="ct-scroll" style={{ display: "flex", gap: 4, overflowX: "auto", borderBottom: `1px solid ${t.line}`, paddingBottom: 10 }}>
+              {metodosAqui.map((o) => {
+                const on = o.id === activeOp;
+                return (
+                  <button key={o.id} onClick={() => { setActiveOp(o.id); }}
+                    style={{ padding: "9px 15px", borderRadius: 10, flexShrink: 0,
+                      border: `1px solid ${on ? t.line : "transparent"}`,
+                      background: on ? t.panel : "transparent",
+                      boxShadow: on ? `inset 0 1px 0 ${t.sheen}` : "none",
+                      color: on ? t.text : t.muted, transition: "all .16s ease",
+                      fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                    {o.name}
+                  </button>
+                );
+              })}
+              <button onClick={() => setNewOpMode(true)} title="Novo método"
+                style={{ width: 36, height: 36, borderRadius: 10, border: `1px dashed ${t.line}`,
+                  background: "transparent", color: t.muted, flexShrink: 0, display: "flex",
+                  alignItems: "center", justifyContent: "center", padding: 0 }}>
+                <Plus size={15} />
+              </button>
+            </div>
+
+            {newOpMode && (
+              <InlineInput t={t} placeholder="Nome do método" onSubmit={addOperacao} onCancel={() => setNewOpMode(false)} />
+            )}
+
+            {/* controles do método aberto: sem isto não dá para renomear, mover nem excluir */}
+            {currentOp && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {renomeando ? (
+                  <div style={{ minWidth: 220 }}>
+                    <InlineInput t={t} placeholder="Nome do método" initialValue={currentOp.name}
+                      onSubmit={(v) => { renameOp(currentOp.id, v); setRenomeando(false); }}
+                      onCancel={() => setRenomeando(false)} />
+                  </div>
+                ) : (
+                  <BotaoIcone t={t} titulo="Renomear método" onClick={() => setRenomeando(true)} icone={<Pencil size={15} />} />
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.2, color: t.muted }}>MÊS</span>
+                  <select value={activeMes || mesAgora()} onChange={(e) => updateOpMes(currentOp.id, e.target.value)}
+                    style={{ background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono,
+                      fontSize: 12, fontWeight: 700, padding: "8px 10px", outline: "none", borderRadius: 10 }}>
+                    {Array.from(new Set([...meses, mesAgora()])).sort().map((m) => (
+                      <option key={m} value={m}>{fmtMes(m)}</option>
+                    ))}
+                  </select>
+                </div>
+                {confirmarExcluir ? (
+                  <>
+                    <BotaoIcone t={t} tom="perigo" titulo="Confirmar exclusão"
+                      onClick={() => { deleteOp(currentOp.id); setConfirmarExcluir(false); }} icone={<Check size={15} />} />
+                    <BotaoIcone t={t} titulo="Cancelar" onClick={() => setConfirmarExcluir(false)} icone={<X size={15} />} />
+                  </>
+                ) : (
+                  <BotaoIcone t={t} titulo="Excluir método" onClick={() => setConfirmarExcluir(true)} icone={<Trash2 size={15} />} />
+                )}
+              </div>
+            )}
+
+            {metodosAqui.length === 0 && !newOpMode ? (
+              <Panel t={t} label="Mês vazio">
+                <p style={{ fontSize: 12.5, color: t.muted, margin: "0 0 14px" }}>
+                  Ainda não há métodos nesta planilha. Crie o primeiro para começar a lançar contas.
+                </p>
+                <button onClick={() => setNewOpMode(true)} className="ct-btn ct-btn-solid"><Plus size={13} /> Novo método</button>
+              </Panel>
+            ) : (
           <OperacaoView
             t={t} op={currentOp} rows={currentRows}
             updateCell={updateCell} addRow={addRow} deleteRow={deleteRow} duplicateRow={duplicateRow}
             deleteOp={deleteOp} updateOpComissao={updateOpComissao} updateOpLula={updateOpLula} updateOpPerdaFixa={updateOpPerdaFixa} updateOpPerdaAtiva={updateOpPerdaAtiva}
             addFornecedor={addFornecedor} updateFornecedor={updateFornecedor} deleteFornecedor={deleteFornecedor}
             addFornRow={addFornRow} updateFornCell={updateFornCell} deleteFornRow={deleteFornRow} duplicarFornRow={duplicarFornRow}
+            sugestoes={contas.map((c) => c.nome).filter(Boolean)}
             onNew={() => setNewOpMode(true)}
           />
+            )}
+          </div>
         )}
+        </div>
       </main>
+    </div>
+  );
+}
+
+
+/* ---------- Logo ECL ---------- */
+/* Marca vetorial desenhada no próprio JSX, sem imagem externa. */
+function LogoECL({ t, compact = false }) {
+  const w = compact ? 40 : 64;
+  const h = compact ? 35 : 56;
+  const gradId = compact ? "ecl-logo-grad-c" : "ecl-logo-grad";
+
+  return (
+    <div
+      aria-label="ECL"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: compact ? 8 : 11,
+        minWidth: 0,
+      }}
+    >
+      <svg
+        width={w}
+        height={h}
+        viewBox="0 0 92 80"
+        role="img"
+        aria-label="Logo ECL"
+        style={{ flexShrink: 0, overflow: "visible" }}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="15" y1="68" x2="75" y2="9">
+            <stop offset="0%" stopColor={t.green} stopOpacity=".48" />
+            <stop offset="56%" stopColor={t.green} />
+            <stop offset="100%" stopColor="#d8ffe9" />
+          </linearGradient>
+        </defs>
+
+        {/* aro inspirado em ficha / ciclo de evolução */}
+        <path
+          d="M20 61C6 46 10 23 27 12 43 2 65 7 77 22"
+          fill="none"
+          stroke={t.line}
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <path
+          d="M76 22c7 12 5 28-4 39"
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth="4.5"
+          strokeLinecap="round"
+        />
+
+        {/* seta de subida: superação */}
+        <path
+          d="M56 55 73 36 81 43 82 21 60 23 68 30 49 51"
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth="5.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* coroa minimalista */}
+        <path
+          d="M27 18 33 8l9 10L51 5l9 13 9-10 5 12"
+          fill="none"
+          stroke={t.gold || t.green}
+          strokeWidth="2.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M29 23h43" stroke={t.gold || t.green} strokeWidth="2.7" strokeLinecap="round" />
+
+        {/* três barras = progresso */}
+        <rect x="24" y="49" width="6" height="14" rx="2" fill={t.green} opacity=".45" />
+        <rect x="34" y="43" width="6" height="20" rx="2" fill={t.green} opacity=".68" />
+        <rect x="44" y="35" width="6" height="28" rx="2" fill={t.green} opacity=".95" />
+      </svg>
+
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            lineHeight: .82,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: t.display,
+              fontSize: compact ? 23 : 34,
+              letterSpacing: compact ? 1.7 : 2,
+              color: t.text,
+              WebkitTextStroke: compact ? "0" : "0.35px rgba(255,255,255,.22)",
+              textShadow: `0 0 26px ${t.green}22`,
+            }}
+          >
+            ECL
+          </span>
+          <span
+            aria-hidden="true"
+            style={{
+              width: compact ? 5 : 6,
+              height: compact ? 5 : 6,
+              borderRadius: 99,
+              background: t.green,
+              marginLeft: compact ? 4 : 5,
+              marginBottom: 1,
+              boxShadow: `0 0 10px ${t.green}`,
+            }}
+          />
+        </div>
+
+        {!compact && (
+          <div
+            style={{
+              marginTop: 9,
+              maxWidth: 145,
+              fontFamily: t.mono,
+              fontSize: 7.5,
+              lineHeight: 1.5,
+              letterSpacing: .72,
+              color: t.muted,
+            }}
+          >
+            O LIMITE SÓ EXISTE
+            <br />
+            <span style={{ color: t.green }}>ATÉ SER SUPERADO.</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -598,19 +869,34 @@ export default function CasinoTracker() {
 
 function Grain({ t, dark }) {
   return (
-    <div aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+    <div aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, background: t.ink }} />
-      {/* clarão frio no alto, dá profundidade sem sujar o fundo */}
-      <div style={{ position: "absolute", inset: 0, background: dark
-        ? "radial-gradient(120% 70% at 50% -18%, rgba(52,211,153,.07) 0%, rgba(52,211,153,0) 55%)"
-        : "radial-gradient(120% 70% at 50% -18%, rgba(14,159,110,.06) 0%, rgba(14,159,110,0) 55%)" }} />
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        width: "min(70vh, 70vw)", opacity: dark ? 0.014 : 0.03, display: "flex" }}>
-        <Skull size="100%" color={dark ? "#FFFFFF" : "#0A0A0A"} style={{ width: "100%", height: "auto" }} />
-      </div>
-      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: dark ? 0.05 : 0.025 }}>
+      <div style={{
+        position: "absolute", inset: 0,
+        background: dark
+          ? "radial-gradient(900px 520px at 82% -8%, rgba(39,245,154,.11), transparent 62%), radial-gradient(680px 420px at 16% 12%, rgba(242,197,96,.035), transparent 68%), linear-gradient(180deg,#030806 0%,#050B08 48%,#030806 100%)"
+          : "radial-gradient(900px 520px at 82% -8%, rgba(7,152,91,.10), transparent 62%), linear-gradient(180deg,#F7FBF8 0%,#F1F7F3 100%)"
+      }} />
+      <div style={{
+        position:"absolute", inset:0, opacity: dark ? .12 : .055,
+        backgroundImage: `linear-gradient(${t.line} 1px, transparent 1px), linear-gradient(90deg, ${t.line} 1px, transparent 1px)`,
+        backgroundSize:"46px 46px",
+        maskImage:"linear-gradient(to bottom,rgba(0,0,0,.5),transparent 72%)",
+        WebkitMaskImage:"linear-gradient(to bottom,rgba(0,0,0,.5),transparent 72%)"
+      }} />
+      <svg viewBox="0 0 620 620" style={{
+        position:"absolute", width:"min(62vw,720px)", height:"min(62vw,720px)",
+        left:"56%", top:"49%", transform:"translate(-50%,-50%)",
+        opacity: dark ? .026 : .035
+      }}>
+        <circle cx="310" cy="310" r="226" fill="none" stroke={t.green} strokeWidth="18"/>
+        <path d="M176 392 260 264l72 82 118-166" fill="none" stroke={t.green} strokeWidth="46" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M207 199 249 126l61 69 66-100 60 95 55-64 30 87" fill="none" stroke={t.gold || t.green} strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M220 443h178" stroke={t.green} strokeWidth="18" strokeLinecap="round"/>
+      </svg>
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: dark ? 0.035 : 0.018 }}>
         <filter id="ct-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3" />
           <feColorMatrix type="saturate" values="0" />
         </filter>
         <rect width="100%" height="100%" filter="url(#ct-grain)" />
@@ -622,8 +908,9 @@ function Grain({ t, dark }) {
 function TabBar({ t, tabs, activeId, onPick, extras, mobile }) {
   return (
     <div className="ct-scroll" style={{ display: "flex", gap: 4, overflowX: "auto", borderBottom: `1px solid ${t.line}`,
-      paddingBottom: 10, marginBottom: mobile ? 20 : 28, flexShrink: 0,
-      position: mobile ? "sticky" : "static", top: 0, zIndex: 5, background: t.ink,
+      paddingTop: mobile ? 10 : 16, paddingBottom: 12, marginBottom: mobile ? 22 : 30, flexShrink: 0,
+      position: "sticky", top: 0, zIndex: 5,
+      background: "linear-gradient(180deg,rgba(3,8,6,.93),rgba(3,8,6,.78))", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)",
       margin: mobile ? "0 -13px 18px" : undefined, padding: mobile ? "0 8px" : undefined }}>
       {tabs.map((tab) => {
         const on = tab.id === activeId;
@@ -680,10 +967,15 @@ function useLargura(minimo = 300) {
 
 /* linha do lucro por dia — SVG puro */
 function LinhaDia({ t, serie }) {
-  if (serie.length < 1) {
-    return <div style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>SEM MOVIMENTO REGISTRADO</div>;
-  }
+  /* o hook vem antes de qualquer return: React exige a mesma ordem em todo render */
   const [caixa, W] = useLargura(320);
+  if (serie.length < 1) {
+    return (
+      <div ref={caixa} style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>
+        SEM MOVIMENTO REGISTRADO
+      </div>
+    );
+  }
   const compacto = W < 560;
   const H = compacto ? 190 : 250;
   /* espaço à esquerda calculado pela largura do rótulo, senão o "R$" fica cortado */
@@ -699,16 +991,13 @@ function LinhaDia({ t, serie }) {
   const ticks = [max, max - span / 3, max - (2 * span) / 3, min];
   return (
     <div ref={caixa} style={{ width: "100%" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
+      <svg className="ct-grafico" viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
         <defs>
           <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={t.green} stopOpacity="0.34" />
             <stop offset="100%" stopColor={t.green} stopOpacity="0" />
           </linearGradient>
-          <filter id="brilho" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="4" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
+
         </defs>
         <text x={padL - 12} y={padT - 7} textAnchor="end" fontFamily="'JetBrains Mono', monospace"
           fontSize={compacto ? 9 : 10} fill={t.muted} opacity="0.75">R$</text>
@@ -724,9 +1013,9 @@ function LinhaDia({ t, serie }) {
         ))}
         <polygon points={area} fill="url(#gd)" />
         <polyline points={pts} fill="none" stroke={t.green} strokeWidth="2.5"
-          strokeLinejoin="round" strokeLinecap="round" filter="url(#brilho)" />
+          strokeLinejoin="round" strokeLinecap="round" />
         {serie.map((d, i) => (
-          <circle key={d[0]} cx={px(i)} cy={py(d[1])} r={compacto ? 3 : 3.6} fill={t.green} filter="url(#brilho)"><title>{`${fmtDia(d[0])} — ${fmtBRL(d[1])}`}</title></circle>
+          <circle key={d[0]} cx={px(i)} cy={py(d[1])} r={compacto ? 2.6 : 3} fill={t.ink} stroke={t.green} strokeWidth="2"><title>{`${fmtDia(d[0])} — ${fmtBRL(d[1])}`}</title></circle>
         ))}
         <text x={padL} y={H - 9} fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 10 : 11} fill={t.muted}>{serie[0][0].slice(8, 10)}/{serie[0][0].slice(5, 7)}</text>
         <text x={W - padR} y={H - 9} textAnchor="end" fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 10 : 11} fill={t.muted}>
@@ -739,31 +1028,36 @@ function LinhaDia({ t, serie }) {
 
 /* barras do lucro por operação, com o valor em cima */
 function BarrasOperacao({ t, dados }) {
+  const [caixa, Wcaixa] = useLargura(320);
   if (!dados.length) {
-    return <div style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>SEM MOVIMENTO REGISTRADO</div>;
+    return (
+      <div ref={caixa} style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, letterSpacing: 1, padding: "26px 0", textAlign: "center" }}>
+        SEM MOVIMENTO REGISTRADO
+      </div>
+    );
   }
-  const [caixa, W] = useLargura(320);
-  const compacto = W < 560;
-  const H = compacto ? 210 : 260;
-  const padT = 30, padB = 46, padL = 14, padR = 14;
+  const compacto = Wcaixa < 560;
+  /* cada barra precisa de um mínimo de espaço para o nome caber.
+     Se não couber na tela, o gráfico fica mais largo e rola de lado. */
+  const passoMin = compacto ? 82 : 112;
+  const W = Math.max(Wcaixa, dados.length * passoMin + 28);
+  /* nome sempre inclinado: cabe inteiro e nunca encosta no vizinho */
+  const H = compacto ? 250 : 290;
+  const padT = 32, padB = compacto ? 84 : 92, padL = 14, padR = 14;
   const vals = dados.map((d) => d.value);
   const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
   const span = (max - min) || 1;
   const aw = W - padL - padR, ah = H - padT - padB;
   const passo = aw / dados.length;
-  const larg = Math.min(compacto ? 34 : 56, passo * 0.52);
+  const larg = Math.min(compacto ? 34 : 54, passo * 0.46);
   const y0 = padT + ah - ((0 - min) / span) * ah;
   const rotulo = (v) => Math.abs(v) >= 100000 ? `R$ ${(v / 1000).toFixed(0)} mil`
     : Math.abs(v) >= 1000 ? `R$ ${(v / 1000).toFixed(1).replace(".", ",")} mil`
     : fmtBRL(v);
   return (
-    <div ref={caixa} style={{ width: "100%" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
+    <div ref={caixa} className="ct-scroll" style={{ width: "100%", overflowX: W > Wcaixa ? "auto" : "hidden" }}>
+      <svg className="ct-grafico" viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: "block" }}>
         <defs>
-          <filter id="brilhoBarra" x="-60%" y="-40%" width="220%" height="180%">
-            <feGaussianBlur stdDeviation="6" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
           <linearGradient id="barraVerde" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={t.green} stopOpacity="1" />
             <stop offset="100%" stopColor={t.green} stopOpacity="0.45" />
@@ -783,13 +1077,14 @@ function BarrasOperacao({ t, dados }) {
           return (
             <g key={d.name}>
               <title>{`${d.name} — ${fmtBRL(d.value)}`}</title>
-              <rect x={x} y={y} width={larg} height={alt}
-                fill={d.value < 0 ? "url(#barraVermelha)" : "url(#barraVerde)"} filter="url(#brilhoBarra)" />
+              <rect x={x} y={y} width={larg} height={alt} rx="3"
+                fill={d.value < 0 ? "url(#barraVermelha)" : "url(#barraVerde)"} />
               <text x={x + larg / 2} y={d.value >= 0 ? y - 8 : y + alt + 14} textAnchor="middle"
                 fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 9 : 10.5} fill={cor}>{rotulo(d.value)}</text>
-              <text x={x + larg / 2} y={H - 12} textAnchor="middle"
-                fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 9 : 10.5} fill={t.muted}>
-                {d.name.length > (compacto ? 7 : 12) ? d.name.slice(0, compacto ? 6 : 11) + "…" : d.name}
+              <text x={x + larg / 2} y={H - padB + 24} textAnchor="end"
+                transform={`rotate(-40 ${x + larg / 2} ${H - padB + 24})`}
+                fontFamily="'JetBrains Mono', monospace" fontSize={compacto ? 9.5 : 11} fill={t.muted}>
+                {d.name.length > 18 ? d.name.slice(0, 17) + "…" : d.name}
               </text>
             </g>
           );
@@ -908,6 +1203,213 @@ function Linha({ t, rot, valor, forte, total }) {
 }
 
 
+/* caixinha de "recebi o saque do cliente" */
+function Caixinha({ t, rot, marcado, apagado, onChange }) {
+  return (
+    <button onClick={() => onChange(!marcado)}
+      title={apagado ? `Saque ${rot} ainda não lançado` : marcado ? `Saque ${rot} recebido` : `Marcar saque ${rot} como recebido`}
+      style={{ width: 26, height: 24, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${marcado ? t.green : apagado ? t.line : t.edge}`,
+        background: marcado ? t.green : "transparent",
+        color: marcado ? t.ink : apagado ? t.line : t.muted,
+        opacity: apagado ? 0.5 : 1,
+        fontFamily: t.mono, fontSize: 10.5, fontWeight: 700,
+        transition: "all .15s ease", padding: 0 }}>
+      {marcado ? <Check size={13} color={t.ink} strokeWidth={3} /> : rot}
+    </button>
+  );
+}
+
+
+/* barra do celular: menu, marca e os dois atalhos */
+function BarraApp({ t, oculto, setOculto, onMenu, onCalc }) {
+  const bt = {
+    width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center",
+    border: `1px solid ${t.line}`, background: "transparent", color: t.text, padding: 0,
+  };
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 20, display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 10, padding: "12px 0", margin: "0 0 6px",
+      background: "linear-gradient(180deg,rgba(3,8,6,.93),rgba(3,8,6,.78))", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)",
+      borderBottom: `1px solid ${t.line}`,
+    }}>
+      <button onClick={onMenu} style={bt} title="Menu"><Menu size={17} /></button>
+      <LogoECL t={t} compact />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => setOculto(!oculto)} style={bt} title={oculto ? "Mostrar valores" : "Ocultar valores"}>
+          {oculto ? <EyeOff size={17} /> : <Eye size={17} />}
+        </button>
+        <button onClick={onCalc} style={bt} title="Calculadora"><Calculator size={17} /></button>
+      </div>
+    </div>
+  );
+}
+
+/* gaveta lateral do celular */
+function Gaveta({ t, aberta, onFechar, view, setView, meses, activeMes, abrirMes, addMes, contarMetodos, theme, toggleTheme }) {
+  const item = (ativo) => ({
+    display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "13px 12px", borderRadius: 11,
+    border: "none", background: ativo ? t.hover : "transparent", color: ativo ? t.text : t.muted,
+    fontSize: 13.5, fontWeight: ativo ? 600 : 400, textAlign: "left",
+    boxShadow: ativo ? `inset 2px 0 0 ${t.red}` : "none",
+  });
+  return (
+    <div onClick={onFechar} aria-hidden={!aberta}
+      style={{ position: "fixed", inset: 0, zIndex: 40, pointerEvents: aberta ? "auto" : "none",
+        background: aberta ? "rgba(0,0,0,.6)" : "rgba(0,0,0,0)", transition: "background .25s ease" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "min(80vw, 300px)",
+          background: t.panel, borderRight: `1px solid ${t.line}`, padding: "18px 14px",
+          display: "flex", flexDirection: "column", gap: 8, overflowY: "auto",
+          transform: aberta ? "translateX(0)" : "translateX(-102%)",
+          transition: "transform .28s cubic-bezier(.4,0,.2,1)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <LogoECL t={t} compact />
+          <button onClick={onFechar} style={t.iconBtn}><X size={16} /></button>
+        </div>
+
+        <button style={item(view === "dashboard")} onClick={() => { setView("dashboard"); onFechar(); }}>
+          <LayoutDashboard size={15} /> Dashboard
+        </button>
+        <button style={item(view === "contas")} onClick={() => { setView("contas"); onFechar(); }}>
+          <KeyRound size={15} /> Contas
+        </button>
+
+        <div className="ct-rule" style={{ margin: "10px 2px" }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px 4px" }}>
+          <span className="ct-label">Planilhas por mês</span>
+          <button onClick={() => { addMes(); onFechar(); }} style={t.iconBtn} title="Nova planilha do mês"><Plus size={14} /></button>
+        </div>
+
+        {meses.map((m) => (
+          <button key={m} style={item(view === "mes" && activeMes === m)} onClick={() => { abrirMes(m); onFechar(); }}>
+            <FileText size={15} />
+            <span style={{ flex: 1 }}>{fmtMes(m)}</span>
+            <span style={{ fontFamily: t.mono, fontSize: 10.5, color: t.muted }}>{contarMetodos(m)}</span>
+          </button>
+        ))}
+
+        <div style={{ flex: 1 }} />
+        <div className="ct-rule" style={{ margin: "10px 2px" }} />
+        <button style={item(false)} onClick={toggleTheme}>
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          {theme === "dark" ? "Tema claro" : "Tema escuro"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* campo de conta com lista própria: datalist não funciona no Safari do iPhone */
+function ContaInput({ t, valor, sugestoes, onChange }) {
+  const [aberto, setAberto] = useState(false);
+  const [rascunho, setRascunho] = useState(null);
+  const texto = rascunho !== null ? rascunho : (valor || "");
+  const filtradas = (sugestoes || []).filter((n) =>
+    !texto.trim() || n.toLowerCase().includes(texto.trim().toLowerCase()));
+
+  const escolher = (n) => { onChange(n); setRascunho(null); setAberto(false); };
+
+  return (
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+      <input
+        type="text" placeholder="nome"
+        value={texto}
+        onFocus={() => { setRascunho(valor || ""); setAberto(true); }}
+        onChange={(e) => { setRascunho(e.target.value); setAberto(true); }}
+        onBlur={() => { onChange((rascunho ?? "").trim() || valor || ""); setRascunho(null); setTimeout(() => setAberto(false), 140); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
+        style={{ flex: 1, minWidth: 0 }} />
+      {(sugestoes || []).length > 0 && (
+        <button type="button" tabIndex={-1}
+          onMouseDown={(e) => { e.preventDefault(); setAberto((v) => !v); }}
+          title="Escolher conta cadastrada"
+          style={{ background: "none", border: "none", color: t.muted, padding: "0 4px", display: "flex" }}>
+          <ChevronDown size={13} />
+        </button>
+      )}
+      {aberto && filtradas.length > 0 && (
+        <div className="ct-scroll" style={{
+          position: "absolute", top: "100%", left: 0, zIndex: 30, minWidth: 170, maxHeight: 210, overflowY: "auto",
+          background: t.panel, border: `1px solid ${t.edge}`, borderRadius: 10, marginTop: 4,
+          boxShadow: "0 12px 28px rgba(0,0,0,.45)", padding: 5,
+        }}>
+          {filtradas.map((n) => (
+            <button key={n} type="button"
+              onMouseDown={(e) => { e.preventDefault(); escolher(n); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 7,
+                border: "none", background: "transparent", color: t.text, fontSize: 12.5, whiteSpace: "nowrap" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = t.hover; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* título de seção: rótulo pequeno e um fio que atravessa o resto da largura.
+   Substitui as caixas empilhadas por uma leitura de documento. */
+function Secao({ t, titulo, direita, children, espaco = 20 }) {
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <span className="ct-label" style={{ whiteSpace: "nowrap" }}>{titulo}</span>
+        <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg,${t.edge},${t.line},transparent)` }} />
+        {direita}
+      </div>
+      <div style={{ paddingTop: espaco - 14 }}>{children}</div>
+    </section>
+  );
+}
+
+/* faixa de números separados por fio vertical, no lugar de cartões soltos */
+function Faixa({ t, itens }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12 }}>
+      {itens.map((it, i) => (
+        <div key={it.rot} style={{
+          minWidth: 0, padding: "19px 20px", border: `1px solid ${t.line}`, borderRadius: 15,
+          background: it.destaque
+            ? "linear-gradient(145deg,rgba(39,245,154,.09),rgba(8,17,13,.92))"
+            : "linear-gradient(145deg,rgba(255,255,255,.018),rgba(7,16,12,.86))",
+          boxShadow: it.destaque ? "0 0 26px rgba(39,245,154,.045)" : "inset 0 1px 0 rgba(255,255,255,.025)",
+        }}>
+          <span className="ct-label" style={{ marginBottom: 10, display: "block" }}>{it.rot}</span>
+          {it.bruto !== undefined
+            ? <span className="ct-money" style={{ fontFamily: t.mono, fontSize: 22, fontWeight: 700, color: t.text }}>{it.bruto}</span>
+            : <Money t={t} value={it.valor} tone={it.tom} size={22} sign={it.sinal} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+/* botão só com símbolo: o rótulo vira dica ao passar o mouse */
+function BotaoIcone({ t, icone, titulo, onClick, tom }) {
+  const cor = tom === "perigo" ? t.red : tom === "forte" ? t.ink : t.muted;
+  return (
+    <button onClick={onClick} title={titulo} aria-label={titulo}
+      style={{
+        width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${tom === "forte" ? t.text : t.line}`,
+        background: tom === "forte" ? t.text : "transparent",
+        color: cor, padding: 0, transition: "all .15s ease", flexShrink: 0,
+      }}
+      onMouseEnter={(e) => { if (tom !== "forte") { e.currentTarget.style.borderColor = tom === "perigo" ? t.red : t.edge; e.currentTarget.style.color = tom === "perigo" ? t.red : t.text; } }}
+      onMouseLeave={(e) => { if (tom !== "forte") { e.currentTarget.style.borderColor = t.line; e.currentTarget.style.color = cor; } }}>
+      {icone}
+    </button>
+  );
+}
+
+
 function NavBtn({ t, active, icon, label, onClick }) {
   return (
     <button onClick={onClick} className="ct-item" style={{
@@ -941,7 +1443,7 @@ function Panel({ t, label, right, children, pad = "18px 22px 22px" }) {
     <section className="ct-panel">
       {(label || right) && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "16px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", padding: "17px 22px 15px" }}>
             <span className="ct-label">{label}</span>
             {right}
           </div>
@@ -962,10 +1464,10 @@ function Money({ t, value, tone, size = 24, sign = false }) {
   const [inteiro, centavos] = digits.split(",");
   const prefix = n < 0 ? "−" : sign && n > 0 ? "+" : "";
   return (
-    <span style={{ fontFamily: t.mono, display: "inline-flex", alignItems: "baseline", gap: 4, lineHeight: 1 }}>
+    <span className="ct-money" style={{ fontFamily: t.mono, display: "inline-flex", alignItems: "baseline", gap: 4, lineHeight: 1 }}>
       <span style={{ fontSize: Math.round(size * 0.4), fontWeight: 500, color: t.muted }}>R$</span>
       <span style={{ fontSize: size, fontWeight: 700, color, letterSpacing: -0.5,
-        textShadow: color === t.green ? `0 0 18px ${t.green}66` : color === t.red ? `0 0 16px ${t.red}44` : "none" }}>{prefix}{inteiro}</span>
+}}>{prefix}{inteiro}</span>
       <span style={{ fontSize: Math.round(size * 0.48), fontWeight: 500, color, opacity: 0.4 }}>,{centavos || "00"}</span>
     </span>
   );
@@ -973,10 +1475,10 @@ function Money({ t, value, tone, size = 24, sign = false }) {
 
 function Readout({ t, label, value, tone, size = 22, sign = false, raw }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
       <span className="ct-label">{label}</span>
       {raw !== undefined
-        ? <span style={{ fontFamily: t.mono, fontSize: size, fontWeight: 700, color: tone === "loss" ? t.red : tone === "gain" ? t.green : t.text, letterSpacing: -0.3 }}>{raw}</span>
+        ? <span className="ct-money" style={{ fontFamily: t.mono, fontSize: size, fontWeight: 700, color: tone === "loss" ? t.red : tone === "gain" ? t.green : t.text, letterSpacing: -0.3 }}>{raw}</span>
         : <Money t={t} value={value} tone={tone} size={size} sign={sign} />}
     </div>
   );
@@ -987,8 +1489,8 @@ function PageHead({ t, eyebrow, title, sub, actions }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
       <div style={{ minWidth: 0 }}>
-        <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 2.2, color: t.muted }}>{eyebrow}</span>
-        <h1 style={{ fontFamily: t.display, fontSize: 40, letterSpacing: 0.5, textTransform: "uppercase", color: t.text, margin: "10px 0 0", lineHeight: .95, wordBreak: "break-word", display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+        {eyebrow ? <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 2.2, color: t.muted }}>{eyebrow}</span> : null}
+        <h1 style={{ fontFamily: t.display, fontSize: 38, letterSpacing: 0.8, textTransform: "uppercase", color: t.text, margin: "12px 0 0", lineHeight: 1, wordBreak: "break-word", display: "flex", alignItems: "flex-end", gap: 11, flexWrap: "wrap" }}>
           <span>{title}<span style={{ color: t.red }}>.</span></span>
           <Skull size={26} color={t.line} style={{ marginBottom: 4 }} />
         </h1>
@@ -1001,7 +1503,7 @@ function PageHead({ t, eyebrow, title, sub, actions }) {
 
 /* ---------- Dashboard: soma de todas as operações ---------- */
 
-function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, persist, recarregar, buscando, atualizado, porMes, porDia }) {
+function Dashboard({ t, oculto, setOculto, kpis, porOperacao, totais, data, persist, recarregar, buscando, porMes, porDia }) {
   const [modo, setModo] = useState(null);
   const [txt, setTxt] = useState("");
   const [copiado, setCopiado] = useState(false);
@@ -1038,38 +1540,44 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
   const lucroTotal = rank.filter((h) => h.value > 0).reduce((a, h) => a + h.value, 0);
   const prejuizoTotal = rank.filter((h) => h.value < 0).reduce((a, h) => a - h.value, 0);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <PageHead t={t} eyebrow="SOMA DE TODAS AS OPERAÇÕES" title="Dashboard"
-        sub={`${opsCount} OPERAÇÕES · ${kpis.ops} REGISTROS · ${contasCount} CONTAS` +
-          (atualizado ? ` · SALVO ${atualizado.slice(0, 16).replace("T", " ")}` : "")}
-        actions={
-          <>
-            <button onClick={async () => {
-                const r = await recarregar(true);
-                setAviso(
-                  r === "novo" ? "Pronto — trouxe os dados mais recentes do outro aparelho."
-                  : r === "igual" ? `Tudo em dia. Nada mudou desde ${atualizado ? atualizado.slice(0, 16).replace("T", " ") : "o último salvamento"}.`
-                  : r === "vazio" ? "Ainda não há nada salvo na sua conta. Lance algo primeiro."
-                  : "Não consegui ler o armazenamento. Recarregue a página e tente de novo."
-                );
-                setModo(null);
-                setTimeout(() => setAviso(null), 5000);
-              }} className="ct-btn ct-btn-line">
-              <RefreshCw size={13} style={buscando ? { animation: "ct-spin .7s linear infinite" } : undefined} />
-              {buscando ? "Buscando" : "Sincronizar"}
-            </button>
-            <button onClick={abrirBackup} className="ct-btn ct-btn-line">
-              {copiado ? <Check size={13} /> : <Copy size={13} />}{copiado ? "Copiado" : "Backup"}
-            </button>
-            <button onClick={() => { setModo("import"); setTxt(""); setAviso(null); }} className="ct-btn ct-btn-line">
-              Restaurar
-            </button>
-          </>
-        } />
+    <div className={oculto ? "ct-oculto" : undefined} style={{ display: "flex", flexDirection: "column", gap: 30, paddingTop: 14 }}>
+      {/* cabeçalho: o número manda, o resto é legenda */}
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+      {/* só o número e os símbolos: nenhuma legenda */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap",
+        padding: "22px 24px", border: `1px solid ${t.line}`, borderRadius: 18,
+        background: "linear-gradient(110deg,rgba(39,245,154,.075),rgba(7,16,12,.76) 40%,rgba(242,197,96,.025))",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,.035), 0 16px 44px rgba(0,0,0,.18)"
+      }}>
+        <Money t={t} value={totais.liquido} tone="vivo" size={54} sign />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <BotaoIcone t={t} titulo={oculto ? "Mostrar valores" : "Ocultar valores"}
+            onClick={() => setOculto(!oculto)} icone={oculto ? <EyeOff size={16} /> : <Eye size={16} />} />
+          <BotaoIcone t={t} titulo="Sincronizar" icone={
+              <RefreshCw size={16} style={buscando ? { animation: "ct-spin .7s linear infinite" } : undefined} />}
+            onClick={async () => {
+              const r = await recarregar(true);
+              setAviso(
+                r === "novo" ? "Pronto — trouxe os dados mais recentes do outro aparelho."
+                : r === "igual" ? "Tudo em dia."
+                : r === "vazio" ? "Ainda não há nada salvo na sua conta."
+                : "Não consegui ler o armazenamento. Recarregue a página."
+              );
+              setModo(null);
+              setTimeout(() => setAviso(null), 4000);
+            }} />
+          <BotaoIcone t={t} titulo={copiado ? "Copiado" : "Backup"} onClick={abrirBackup}
+            icone={copiado ? <Check size={16} /> : <Download size={16} />} />
+          <BotaoIcone t={t} titulo="Restaurar" onClick={() => { setModo("import"); setTxt(""); setAviso(null); }}
+            icone={<Upload size={16} />} />
+        </div>
+      </div>
+      </div>
 
       {aviso && !modo && (
-        <div style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${t.line}`,
-          borderLeft: `2px solid ${t.red}`, background: t.panel, padding: "11px 14px", fontSize: 12.5, color: t.muted }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, borderTop: `1px solid ${t.line}`,
+          borderBottom: `1px solid ${t.line}`, padding: "13px 2px", fontSize: 12.5, color: t.muted }}>
           {aviso}
         </div>
       )}
@@ -1078,15 +1586,11 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
         <Panel t={t} label={modo === "export" ? "Backup — copie este texto" : "Restaurar — cole o backup aqui"}>
           <p style={{ fontSize: 12.5, color: t.muted, margin: "0 0 10px" }}>
             {modo === "export"
-              ? (copiado ? "Já copiei para a área de transferência. Agora mande este texto para o celular e cole no app, em COLAR BACKUP." : "Selecione tudo (Ctrl+A) e copie (Ctrl+C).")
+              ? (copiado ? "Já copiei para a área de transferência." : "Selecione tudo (Ctrl+A) e copie (Ctrl+C).")
               : "Cole o texto do backup e clique em Aplicar. Isso substitui os dados atuais."}
           </p>
-          <textarea
-            readOnly={modo === "export"}
-            value={txt}
-            onChange={(e) => setTxt(e.target.value)}
+          <textarea readOnly={modo === "export"} value={txt} onChange={(e) => setTxt(e.target.value)}
             onFocus={(e) => { if (modo === "export") e.target.select(); }}
-            placeholder={modo === "import" ? '{ "theme": "dark", ... }' : ""}
             style={{ width: "100%", minHeight: 170, background: t.focus, border: `1px solid ${t.line}`, color: t.text, fontFamily: t.mono, fontSize: 11.5, padding: 10, outline: "none", resize: "vertical", borderRadius: 10 }} />
           {aviso && <p style={{ fontSize: 12, color: t.red, margin: "10px 0 0" }}>{aviso}</p>}
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -1096,33 +1600,46 @@ function Dashboard({ t, kpis, porOperacao, totais, opsCount, contasCount, data, 
         </Panel>
       )}
 
-      <div className="grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-        <Panel t={t} label="Lucro total" pad="14px 18px 16px"><Money t={t} value={lucroTotal} tone="gain" size={22} /></Panel>
-        <Panel t={t} label="Prejuízo total" pad="14px 18px 16px"><Money t={t} value={prejuizoTotal} tone="loss" size={22} /></Panel>
-        <Panel t={t} label="Resultado líquido" pad="14px 18px 16px"><Money t={t} value={totais.liquido} tone="vivo" size={22} sign /></Panel>
-        <Panel t={t} label={`Lucro do mês · ${fmtMes(kpis.mesAtual)}`} pad="14px 18px 16px"><Money t={t} value={porMes[kpis.mesAtual] || 0} tone="vivo" size={22} sign /></Panel>
-        <Panel t={t} label="Planilhas (operações)" pad="14px 18px 16px">
-          <span style={{ fontFamily: t.mono, fontSize: 22, fontWeight: 700, color: t.text }}>{opsCount}</span>
-        </Panel>
-      </div>
+      <Secao t={t} titulo="Composição">
+        <Faixa t={t} itens={[
+          { rot: "Lucro", valor: lucroTotal, tom: "gain" },
+          { rot: "Prejuízo", valor: prejuizoTotal, tom: "loss" },
+          { rot: `Mês · ${fmtMes(kpis.mesAtual)}`, valor: porMes[kpis.mesAtual] || 0, tom: "vivo", sinal: true, destaque: true },
+        ]} />
+      </Secao>
 
-      <Panel t={t} label="Lucro por dia"
-        right={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>
-          {serie.length ? `ÚLTIMOS ${serie.length} DIAS` : "SEM MOVIMENTO"}
+      <Secao t={t} titulo="Lucro por dia"
+        direita={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted, whiteSpace: "nowrap" }}>
+          {serie.length ? `${serie.length} DIAS` : "SEM MOVIMENTO"}
         </span>}>
         <LinhaDia t={t} serie={serie} />
-      </Panel>
+      </Secao>
 
-      <Panel t={t} label="Lucro por planilha"
-        right={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>{rank.length} ATIVAS</span>}>
+      <Secao t={t} titulo="Lucro por método"
+        direita={<span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted, whiteSpace: "nowrap" }}>
+          {rank.length} ATIVOS
+        </span>}>
         <BarrasOperacao t={t} dados={rank} />
-      </Panel>
+      </Secao>
 
     </div>
   );
 }
 
 /* ---------- Operação ---------- */
+
+/* mês a que um método pertence: o que foi gravado, senão o do lançamento mais antigo,
+   senão o mês atual. Assim os métodos que já existem entram num mês sem perder nada. */
+function mesDoMetodo(op, rows) {
+  if (op.mes) return op.mes;
+  const datas = (rows || [])
+    .map((r) => (typeof r.data === "string" && r.data.length >= 7 ? r.data.slice(0, 7) : null))
+    .filter(Boolean)
+    .sort();
+  return datas[0] || todayISO().slice(0, 7);
+}
+const mesAgora = () => todayISO().slice(0, 7);
+
 
 function calcOperacao(op, rows) {
   const totalDep = rows.reduce((a, r) => a + parseNum(r.depositado), 0);
@@ -1206,16 +1723,28 @@ function liquidoPorPeriodo(sheets, rowsMap, recorte) {
 
 
 /* tabela de contas — usada pela operação e por cada fornecedor */
-function TabelaContas({ t, rows, onCell, onDel, onDup, onAdd, rotulo = "Contas" }) {
+function TabelaContas({ t, rows, onCell, onDel, onDup, onAdd, rotulo = "Contas", sugestoes = [] }) {
+  const pendentes = rows.filter(pendente);
+  const qtdPendentes = pendentes.length;
+  const valorPendente = pendentes.reduce((a, r) => a + valorAReceber(r), 0);
   const totDep = rows.reduce((a, r) => a + parseNum(r.depositado), 0);
   const totS1 = rows.reduce((a, r) => a + parseNum(r.sacado1), 0);
   const totS2 = rows.reduce((a, r) => a + parseNum(r.sacado2), 0);
   const totPago = rows.reduce((a, r) => a + parseNum(r.pago), 0);
   return (
     <div className="ct-panel">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "16px 20px" }}>
         <span className="ct-label">{rotulo}</span>
-        <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>{rows.length} LINHAS</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          {qtdPendentes > 0 && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: t.mono, fontSize: 10,
+              letterSpacing: 1.1, color: t.red, border: `1px solid ${t.line}`, borderRadius: 99, padding: "5px 11px" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 99, background: t.red, display: "block" }} />
+              {qtdPendentes} A RECEBER · {fmtBRL(valorPendente)}
+            </span>
+          )}
+          <span style={{ fontFamily: t.mono, fontSize: 9.5, letterSpacing: 1.3, color: t.muted }}>{rows.length} LINHAS</span>
+        </div>
       </div>
       <div className="ct-scroll" style={{ overflow: "auto", borderTop: `1px solid ${t.line}` }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900, tableLayout: "fixed" }}>
@@ -1230,11 +1759,22 @@ function TabelaContas({ t, rows, onCell, onDel, onDup, onAdd, rotulo = "Contas" 
             {rows.map((r) => {
               const lucro = getSacado(r) - parseNum(r.depositado);
               return (
-                <tr key={r.id} className="ct-row" style={{ borderTop: `1px solid ${t.line}` }}>
+                <tr key={r.id} className="ct-row" style={{ borderTop: `1px solid ${t.line}`,
+                  boxShadow: pendente(r) ? `inset 3px 0 0 ${t.red}` : "none" }}>
                   {COLUMNS.map((col) => (
                     <td key={col.key} className="ct-cell" style={t.td}>
                       {col.type === "number" ? (
                         <NumInput t={t} value={r[col.key]} onChange={(v) => onCell(r.id, col.key, v)} />
+                      ) : col.type === "check" ? (
+                        <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
+                          <Caixinha t={t} rot="1" marcado={rec1(r)} apagado={parseNum(r.sacado1) <= 0}
+                            onChange={(v) => onCell(r.id, "receb1", v)} />
+                          <Caixinha t={t} rot="2" marcado={rec2(r)} apagado={parseNum(r.sacado2) <= 0}
+                            onChange={(v) => onCell(r.id, "receb2", v)} />
+                        </div>
+                      ) : col.key === "conta" ? (
+                        <ContaInput t={t} valor={r.conta} sugestoes={sugestoes}
+                          onChange={(v) => onCell(r.id, "conta", v)} />
                       ) : (
                         <input type="text" value={r[col.key] ?? ""} onChange={(e) => onCell(r.id, col.key, e.target.value)} />
                       )}
@@ -1269,21 +1809,26 @@ function TabelaContas({ t, rows, onCell, onDel, onDup, onAdd, rotulo = "Contas" 
                 <td style={{ ...t.td, padding: "10px 8px", textAlign: "right", fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, color: t.text }}>{fmtNum(totS1)}</td>
                 <td style={{ ...t.td, padding: "10px 8px", textAlign: "right", fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, color: t.red }}>{fmtNum(totS2)}</td>
                 <td style={{ ...t.td, padding: "10px 8px", textAlign: "right", fontFamily: t.mono, fontSize: 12.5, fontWeight: 700, color: t.text }}>{fmtNum(totPago)}</td>
-                <td style={t.td} /><td style={t.td} /><td style={t.td} />
+                <td style={t.td} />
+                <td style={{ ...t.td, padding: "10px 8px", textAlign: "center", fontFamily: t.mono, fontSize: 11, fontWeight: 700,
+                  color: qtdPendentes ? t.red : t.green }}>
+                  {rows.length - qtdPendentes}/{rows.length}
+                </td>
+                <td style={t.td} /><td style={t.td} />
               </tr>
             </tfoot>
           )}
         </table>
       </div>
       <div style={{ borderTop: `1px solid ${t.line}`, padding: "10px 14px" }}>
-        <button onClick={onAdd} className="ct-btn ct-btn-line"><Plus size={13} /> Adicionar conta</button>
+        <BotaoIcone t={t} titulo="Adicionar conta" onClick={onAdd} icone={<Plus size={16} />} />
       </div>
     </div>
   );
 }
 
 /* um fornecedor: percentuais, perda garantida, contas e resultado próprios */
-function FornecedorBloco({ t, opId, f, updateFornecedor, deleteFornecedor, addFornRow, updateFornCell, deleteFornRow, duplicarFornRow }) {
+function FornecedorBloco({ t, opId, f, sugestoes, updateFornecedor, deleteFornecedor, addFornRow, updateFornCell, deleteFornRow, duplicarFornRow }) {
   const [aberto, setAberto] = useState(true);
   const [confirmar, setConfirmar] = useState(false);
   const up = (campo, v) => updateFornecedor(opId, f.id, campo, v);
@@ -1343,7 +1888,7 @@ function FornecedorBloco({ t, opId, f, updateFornecedor, deleteFornecedor, addFo
       </Panel>
 
       {aberto && (
-        <TabelaContas t={t} rows={rows} rotulo={f.nome ? `Contas de ${f.nome}` : "Contas do fornecedor"}
+        <TabelaContas t={t} rows={rows} sugestoes={sugestoes} rotulo={f.nome ? `Contas de ${f.nome}` : "Contas do fornecedor"}
           onCell={(rowId, key, v) => updateFornCell(opId, f.id, rowId, key, v)}
           onDel={(rowId) => deleteFornRow(opId, f.id, rowId)}
           onDup={(rowId) => duplicarFornRow(opId, f.id, rowId)}
@@ -1355,7 +1900,7 @@ function FornecedorBloco({ t, opId, f, updateFornecedor, deleteFornecedor, addFo
 
 
 function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow, deleteOp, updateOpComissao, updateOpLula, updateOpPerdaFixa, updateOpPerdaAtiva,
-  addFornecedor, updateFornecedor, deleteFornecedor, addFornRow, updateFornCell, deleteFornRow, duplicarFornRow, onNew }) {
+  addFornecedor, updateFornecedor, deleteFornecedor, addFornRow, updateFornCell, deleteFornRow, duplicarFornRow, sugestoes, onNew }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [verConta, setVerConta] = useState(false);
   const [sub, setSub] = useState("contas");
@@ -1408,8 +1953,7 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-      <PageHead t={t} eyebrow="OPERAÇÃO" title={op.name}
-        sub={`${rows.length} ${rows.length === 1 ? "CONTA REGISTRADA" : "CONTAS REGISTRADAS"}`}
+      <PageHead t={t} eyebrow="" title={op.name}
         actions={
           <>
             <button onClick={addRow} className="ct-btn ct-btn-solid"><Plus size={13} /> Nova conta</button>
@@ -1463,7 +2007,7 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
       {sub === "fornecedor" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {(op.fornecedores || []).map((f) => (
-            <FornecedorBloco key={f.id} t={t} opId={op.id} f={f}
+            <FornecedorBloco key={f.id} t={t} opId={op.id} f={f} sugestoes={sugestoes}
               updateFornecedor={updateFornecedor} deleteFornecedor={deleteFornecedor}
               addFornRow={addFornRow} updateFornCell={updateFornCell}
               deleteFornRow={deleteFornRow} duplicarFornRow={duplicarFornRow} />
@@ -1485,11 +2029,6 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
         <Panel t={t} label="Total">
           {/* o número que importa */}
           <Readout t={t} label="Seu lucro líquido real" value={G.liquido} tone="vivo" size={40} sign />
-          <p style={{ fontFamily: t.mono, fontSize: 11, color: t.muted, margin: "12px 0 0", letterSpacing: .6 }}>
-            {G.qtd} {G.qtd === 1 ? "CONTA" : "CONTAS"} · {fmtBRL(G.dep)} INVESTIDOS · {fmtBRL(G.saq)} RETORNADOS
-            {temForn ? ` · ${fornCalc.length} ${fornCalc.length === 1 ? "FORNECEDOR" : "FORNECEDORES"}` : ""}
-          </p>
-
           <div className="ct-rule" style={{ margin: "22px 0 4px" }} />
 
           {/* a conta, de cima para baixo */}
@@ -1562,7 +2101,7 @@ function OperacaoView({ t, op, rows, updateCell, addRow, deleteRow, duplicateRow
       )}
 
       {sub === "contas" && (
-        <TabelaContas t={t} rows={rows} rotulo="Contas"
+        <TabelaContas t={t} rows={rows} rotulo="Contas" sugestoes={sugestoes}
           onCell={(rowId, key, v) => updateCell(rowId, key, v)}
           onDel={(rowId) => deleteRow(rowId)}
           onDup={(rowId) => duplicateRow(rowId)}
@@ -1892,35 +2431,37 @@ function ContasView({ t, contas, addConta, updateConta, deleteConta }) {
 
 function T(theme) {
   const dark = theme === "dark";
-  /* borda quase invisível: separa sem cortar */
-  const line = dark ? "rgba(255,255,255,.07)" : "rgba(10,12,20,.09)";
-  const edge = dark ? "rgba(255,255,255,.20)" : "rgba(10,12,20,.26)";
-  const muted = dark ? "#7C8089" : "#6B7078";
-  const text = dark ? "#ECEDEF" : "#0D0F14";
+  const line = dark ? "rgba(57,255,156,.115)" : "rgba(6,92,57,.12)";
+  const edge = dark ? "rgba(57,255,156,.30)" : "rgba(6,92,57,.28)";
+  const muted = dark ? "#789086" : "#60736B";
+  const text = dark ? "#F3FFF8" : "#07130D";
 
   return {
-    /* nem preto puro nem cinza: um grafite levemente frio, que descansa a vista */
-    ink: dark ? "#08090C" : "#F6F7F8",
-    panel: dark ? "#0E1014" : "#FFFFFF",
+    ink: dark ? "#030806" : "#F3F8F5",
+    panel: dark ? "#07100C" : "#FFFFFF",
     line, edge, muted, text,
-    sheen: dark ? "rgba(255,255,255,.045)" : "rgba(255,255,255,.9)",
-    hover: dark ? "rgba(255,255,255,.035)" : "rgba(10,12,20,.035)",
-    focus: dark ? "rgba(255,255,255,.06)" : "rgba(10,12,20,.05)",
-    red: dark ? "#F0616D" : "#D92B45",
-    green: dark ? "#34D399" : "#0E9F6E",
+    sheen: dark ? "rgba(189,255,221,.055)" : "rgba(255,255,255,.94)",
+    veu: dark ? "rgba(3,8,6,.84)" : "rgba(243,248,245,.88)",
+    hover: dark ? "rgba(36,245,145,.055)" : "rgba(10,128,76,.055)",
+    focus: dark ? "rgba(36,245,145,.085)" : "rgba(10,128,76,.075)",
+    red: dark ? "#FF5364" : "#D52E45",
+    green: dark ? "#27F59A" : "#07985B",
+    gold: dark ? "#F2C560" : "#B98218",
 
     display: "'Anton', sans-serif",
     ui: "'Archivo', sans-serif",
     mono: "'JetBrains Mono', monospace",
 
     iconBtn: {
-      background: "none", border: "none", color: muted, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 5, borderRadius: 8,
+      background: dark ? "rgba(39,245,154,.025)" : "rgba(7,152,91,.025)",
+      border: `1px solid ${line}`, color: muted, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 6, borderRadius: 9,
+      transition: "all .16s ease",
     },
     th: {
       textAlign: "left", fontSize: 9, fontWeight: 700, textTransform: "uppercase",
       letterSpacing: 2, color: muted, padding: "13px 9px", position: "sticky", top: 0,
-      background: dark ? "#0E1014" : "#FFFFFF", borderBottom: `1px solid ${line}`,
+      background: dark ? "#07100C" : "#FFFFFF", borderBottom: `1px solid ${line}`,
     },
     td: { padding: "3px 5px", verticalAlign: "middle" },
   };
