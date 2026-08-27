@@ -8,6 +8,8 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
+  const [cadastro, setCadastro] = useState(false);
+  const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -43,23 +45,48 @@ export default function App() {
     );
   }
 
-  async function login(e) {
+  async function enviar(e) {
     e.preventDefault();
     setErro("");
+    setCarregando(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    });
+    try {
+      if (cadastro) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password: senha,
+        });
 
-    if (error) setErro(error.message);
+        if (error) throw error;
+
+        if (!data.session) {
+          setErro("Conta criada. Faça login para entrar.");
+          setCadastro(false);
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password: senha,
+        });
+
+        if (error) throw error;
+      }
+    } catch (err) {
+      setErro(err?.message || "Não foi possível continuar.");
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (
     <div style={page}>
-      <form onSubmit={login} style={card}>
+      <form onSubmit={enviar} style={card}>
         <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 2 }}>
           ECL<span style={{ color: "#27F59A" }}>.</span>
+        </div>
+
+        <div style={{ fontSize: 10, letterSpacing: 2.5, color: "#789086", marginBottom: 4 }}>
+          {cadastro ? "CRIAR SUA CONTA" : "ACESSE SUA CONTA"}
         </div>
 
         <input
@@ -77,12 +104,26 @@ export default function App() {
           placeholder="Senha"
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
+          minLength={6}
           required
         />
 
-        {erro && <small style={{ color: "#FF5364" }}>{erro}</small>}
+        {erro && <small style={{ color: "#FF5364", lineHeight: 1.4 }}>{erro}</small>}
 
-        <button style={button}>ENTRAR</button>
+        <button style={button} disabled={carregando}>
+          {carregando ? "AGUARDE..." : cadastro ? "CRIAR CONTA" : "ENTRAR"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCadastro(!cadastro);
+            setErro("");
+          }}
+          style={secondary}
+        >
+          {cadastro ? "Já tenho uma conta" : "Criar uma conta"}
+        </button>
       </form>
     </div>
   );
@@ -106,6 +147,7 @@ const card = {
   background: "#07100C",
   border: "1px solid rgba(39,245,154,.14)",
   borderRadius: 16,
+  boxShadow: "0 18px 60px rgba(0,0,0,.28)",
 };
 
 const input = {
@@ -124,6 +166,16 @@ const button = {
   background: "#27F59A",
   color: "#021008",
   fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondary = {
+  padding: 10,
+  border: "1px solid rgba(39,245,154,.12)",
+  borderRadius: 10,
+  background: "transparent",
+  color: "#9CB4A8",
+  fontWeight: 700,
   cursor: "pointer",
 };
 
