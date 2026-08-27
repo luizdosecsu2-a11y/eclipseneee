@@ -175,26 +175,93 @@ function TelaLogin({ t, onReady }) {
     } finally { setBusy(false); }
   };
 
+  const inputStyle = {
+    width:"100%", height:52, padding:"0 16px",
+    background:"rgba(4,18,13,.76)",
+    border:`1px solid ${t.line}`,
+    borderRadius:8, color:t.text, outline:"none",
+    fontSize:14, fontFamily:t.ui,
+    transition:"border-color .18s ease, box-shadow .18s ease"
+  };
+
   return (
-    <div style={{minHeight:"100vh",background:t.ink,color:t.text,display:"grid",placeItems:"center",padding:20,fontFamily:t.ui}}>
-      <form onSubmit={enviar} className="ct-panel" style={{width:"min(440px,100%)",padding:"34px 30px"}}>
-        <LogoECL t={t} />
-        <div style={{marginTop:26,fontSize:13,fontWeight:800,letterSpacing:.5}}>
-          {modo === "entrar" ? "ENTRAR NA CONTA" : "CRIAR CONTA"}
+    <div style={{
+      minHeight:"100vh", background:t.ink, color:t.text,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:"28px 18px", fontFamily:t.ui
+    }}>
+      <form onSubmit={enviar} style={{
+        width:"min(460px,100%)",
+        padding:"34px 34px 30px",
+        background:"linear-gradient(180deg,rgba(5,18,13,.96),rgba(2,10,7,.98))",
+        border:`1px solid ${t.green}55`,
+        borderRadius:14,
+        boxShadow:"0 20px 60px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.025)"
+      }}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:28}}>
+          <LogoECL t={t} />
         </div>
-        <input value={email} onChange={e=>setEmail(e.target.value)} type="email" autoComplete="email" placeholder="E-mail"
-          style={{width:"100%",marginTop:18,padding:"14px 15px",background:t.panel,border:`1px solid ${t.line}`,color:t.text,outline:"none"}} />
-        <input value={senha} onChange={e=>setSenha(e.target.value)} type="password"
-          autoComplete={modo==="entrar" ? "current-password" : "new-password"} placeholder="Senha"
-          style={{width:"100%",marginTop:10,padding:"14px 15px",background:t.panel,border:`1px solid ${t.line}`,color:t.text,outline:"none"}} />
-        {erro && <div style={{marginTop:12,color:t.red,fontSize:12}}>{erro}</div>}
-        {info && <div style={{marginTop:12,color:t.green,fontSize:12}}>{info}</div>}
-        <button disabled={busy} type="submit" className="ct-btn ct-btn-solid"
-          style={{width:"100%",justifyContent:"center",marginTop:16,padding:14}}>
+
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:22}}>
+          <span style={{height:1,flex:1,background:t.line}} />
+          <div style={{fontSize:13,fontWeight:800,letterSpacing:.8,whiteSpace:"nowrap"}}>
+            {modo === "entrar" ? "ENTRAR NA CONTA" : "CRIAR CONTA"}
+          </div>
+          <span style={{height:1,flex:1,background:t.line}} />
+        </div>
+
+        <div style={{display:"grid",gap:11}}>
+          <input
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow=`0 0 0 3px ${t.green}12`;}}
+            onBlur={e=>{e.currentTarget.style.borderColor=t.line;e.currentTarget.style.boxShadow="none";}}
+            type="email" autoComplete="email" placeholder="E-mail"
+            style={inputStyle}
+          />
+          <input
+            value={senha}
+            onChange={e=>setSenha(e.target.value)}
+            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow=`0 0 0 3px ${t.green}12`;}}
+            onBlur={e=>{e.currentTarget.style.borderColor=t.line;e.currentTarget.style.boxShadow="none";}}
+            type="password"
+            autoComplete={modo==="entrar" ? "current-password" : "new-password"}
+            placeholder="Senha"
+            style={inputStyle}
+          />
+        </div>
+
+        {erro && <div style={{marginTop:12,color:t.red,fontSize:12,lineHeight:1.45}}>{erro}</div>}
+        {info && <div style={{marginTop:12,color:t.green,fontSize:12,lineHeight:1.45}}>{info}</div>}
+
+        <button disabled={busy} type="submit" style={{
+          width:"100%", height:52, marginTop:17,
+          border:`1px solid ${t.green}`,
+          borderRadius:8, background:t.green,
+          color:"#021009", fontSize:13, fontWeight:900,
+          letterSpacing:.7, cursor:busy?"wait":"pointer",
+          opacity:busy?.72:1
+        }}>
           {busy ? "AGUARDE..." : (modo === "entrar" ? "ENTRAR" : "CADASTRAR")}
         </button>
-        <button type="button" onClick={()=>{setModo(modo==="entrar"?"cadastrar":"entrar");setErro("");setInfo("");}}
-          style={{width:"100%",marginTop:14,border:0,background:"transparent",color:t.green,fontWeight:700,padding:8}}>
+
+        <div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0 13px"}}>
+          <span style={{height:1,flex:1,background:t.line}} />
+          <span style={{fontSize:10,color:t.muted,fontWeight:700}}>OU</span>
+          <span style={{height:1,flex:1,background:t.line}} />
+        </div>
+
+        <button
+          type="button"
+          onClick={()=>{setModo(modo==="entrar"?"cadastrar":"entrar");setErro("");setInfo("");}}
+          style={{
+            width:"100%", height:48,
+            border:`1px solid ${t.green}88`,
+            borderRadius:8, background:"transparent",
+            color:t.green, fontSize:12, fontWeight:800,
+            letterSpacing:.5, cursor:"pointer"
+          }}
+        >
           {modo === "entrar" ? "CRIAR UMA CONTA" : "JÁ TENHO CONTA — ENTRAR"}
         </button>
       </form>
