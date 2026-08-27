@@ -176,12 +176,23 @@ function TelaLogin({ t, onReady }) {
   };
 
   const inputStyle = {
-    width:"100%", height:52, padding:"0 16px",
-    background:"rgba(4,18,13,.76)",
-    border:`1px solid ${t.line}`,
-    borderRadius:8, color:t.text, outline:"none",
-    fontSize:14, fontFamily:t.ui,
-    transition:"border-color .18s ease, box-shadow .18s ease"
+    display:"block",
+    boxSizing:"border-box",
+    width:"100%",
+    height:54,
+    margin:0,
+    padding:"0 16px",
+    background:"#04110c",
+    border:"1px solid rgba(35,238,155,.28)",
+    borderRadius:7,
+    color:t.text,
+    outline:"none",
+    fontSize:14,
+    lineHeight:"54px",
+    fontFamily:t.ui,
+    appearance:"none",
+    WebkitAppearance:"none",
+    transition:"border-color .18s ease, box-shadow .18s ease, background .18s ease"
   };
 
   return (
@@ -192,10 +203,10 @@ function TelaLogin({ t, onReady }) {
     }}>
       <form onSubmit={enviar} style={{
         width:"min(460px,100%)",
-        padding:"34px 34px 30px",
+        padding:"32px 34px 30px",
         background:"linear-gradient(180deg,rgba(5,18,13,.96),rgba(2,10,7,.98))",
         border:`1px solid ${t.green}55`,
-        borderRadius:14,
+        borderRadius:10,
         boxShadow:"0 20px 60px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.025)"
       }}>
         <div style={{display:"flex",justifyContent:"center",marginBottom:28}}>
@@ -210,20 +221,20 @@ function TelaLogin({ t, onReady }) {
           <span style={{height:1,flex:1,background:t.line}} />
         </div>
 
-        <div style={{display:"grid",gap:11}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%"}}>
           <input
             value={email}
             onChange={e=>setEmail(e.target.value)}
-            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow=`0 0 0 3px ${t.green}12`;}}
-            onBlur={e=>{e.currentTarget.style.borderColor=t.line;e.currentTarget.style.boxShadow="none";}}
+            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow="0 0 0 2px rgba(35,238,155,.12)";e.currentTarget.style.background="#061710";}}
+            onBlur={e=>{e.currentTarget.style.borderColor="rgba(35,238,155,.28)";e.currentTarget.style.boxShadow="none";e.currentTarget.style.background="#04110c";}}
             type="email" autoComplete="email" placeholder="E-mail"
             style={inputStyle}
           />
           <input
             value={senha}
             onChange={e=>setSenha(e.target.value)}
-            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow=`0 0 0 3px ${t.green}12`;}}
-            onBlur={e=>{e.currentTarget.style.borderColor=t.line;e.currentTarget.style.boxShadow="none";}}
+            onFocus={e=>{e.currentTarget.style.borderColor=t.green;e.currentTarget.style.boxShadow="0 0 0 2px rgba(35,238,155,.12)";e.currentTarget.style.background="#061710";}}
+            onBlur={e=>{e.currentTarget.style.borderColor="rgba(35,238,155,.28)";e.currentTarget.style.boxShadow="none";e.currentTarget.style.background="#04110c";}}
             type="password"
             autoComplete={modo==="entrar" ? "current-password" : "new-password"}
             placeholder="Senha"
