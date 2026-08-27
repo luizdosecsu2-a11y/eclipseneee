@@ -33,7 +33,6 @@ export function installStorageBridge(user) {
       if (key !== "casino-tracker-data") return { ok: true };
 
       const parsed = JSON.parse(value);
-
       const { error } = await supabase
         .from("casino_tracker_data")
         .upsert(

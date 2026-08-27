@@ -8,39 +8,30 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
-  const [cadastro, setCadastro] = useState(false);
+  const [modoCadastro, setModoCadastro] = useState(false);
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null);
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nova) => {
+      setSession(nova ?? null);
     });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession ?? null);
-    });
-
     return () => listener.subscription.unsubscribe();
   }, []);
 
   if (session === undefined) {
-    return <div style={loading}>CARREGANDO</div>;
+    return <div style={loadingStyle}>CARREGANDO</div>;
   }
 
   if (session?.user) {
     installStorageBridge(session.user);
-
     return (
       <>
+        <div style={topStyle}>
+          <span>{session.user.email}</span>
+          <button style={logoutStyle} onClick={() => supabase.auth.signOut()}>SAIR</button>
+        </div>
         <CasinoTracker />
-        <button
-          type="button"
-          onClick={() => supabase.auth.signOut()}
-          style={logout}
-          title={session.user.email || "Sair"}
-        >
-          SAIR
-        </button>
       </>
     );
   }
@@ -49,155 +40,45 @@ export default function App() {
     e.preventDefault();
     setErro("");
     setCarregando(true);
-
     try {
-      if (cadastro) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password: senha,
-        });
+      const result = modoCadastro
+        ? await supabase.auth.signUp({ email, password: senha })
+        : await supabase.auth.signInWithPassword({ email, password: senha });
 
-        if (error) throw error;
+      if (result.error) throw result.error;
 
-        if (!data.session) {
-          setErro("Conta criada. Faça login para entrar.");
-          setCadastro(false);
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password: senha,
-        });
-
-        if (error) throw error;
+      if (modoCadastro && !result.data.session) {
+        setErro("Conta criada. Se a confirmação de e-mail estiver ativada no Supabase, confirme o e-mail; se estiver desativada, faça login.");
       }
-    } catch (err) {
-      setErro(err?.message || "Não foi possível continuar.");
+    } catch (e) {
+      setErro(e.message || "Não foi possível entrar.");
     } finally {
       setCarregando(false);
     }
   }
 
   return (
-    <div style={page}>
-      <form onSubmit={enviar} style={card}>
-        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 2 }}>
-          ECL<span style={{ color: "#27F59A" }}>.</span>
-        </div>
-
-        <div style={{ fontSize: 10, letterSpacing: 2.5, color: "#789086", marginBottom: 4 }}>
-          {cadastro ? "CRIAR SUA CONTA" : "ACESSE SUA CONTA"}
-        </div>
-
-        <input
-          style={input}
-          type="email"
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-
-        <input
-          style={input}
-          type="password"
-          placeholder="Senha"
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          minLength={6}
-          required
-        />
-
-        {erro && <small style={{ color: "#FF5364", lineHeight: 1.4 }}>{erro}</small>}
-
-        <button style={button} disabled={carregando}>
-          {carregando ? "AGUARDE..." : cadastro ? "CRIAR CONTA" : "ENTRAR"}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setCadastro(!cadastro);
-            setErro("");
-          }}
-          style={secondary}
-        >
-          {cadastro ? "Já tenho uma conta" : "Criar uma conta"}
+    <div style={pageStyle}>
+      <form onSubmit={enviar} style={cardStyle}>
+        <div style={{fontSize:36,fontWeight:900,letterSpacing:2}}>ECL<span style={{color:"#e32b1d"}}>.</span></div>
+        <div style={{fontSize:10,letterSpacing:4,color:"#777",marginBottom:22}}>GESTOR</div>
+        <input style={inputStyle} type="email" placeholder="E-mail" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <input style={inputStyle} type="password" placeholder="Senha" value={senha} onChange={e=>setSenha(e.target.value)} minLength={6} required />
+        {erro && <div style={{color:"#e32b1d",fontSize:12,lineHeight:1.4}}>{erro}</div>}
+        <button style={buttonStyle} disabled={carregando}>{carregando ? "AGUARDE..." : (modoCadastro ? "CRIAR CONTA" : "ENTRAR")}</button>
+        <button type="button" style={linkStyle} onClick={()=>{setModoCadastro(!modoCadastro);setErro("");}}>
+          {modoCadastro ? "Já tenho conta" : "Criar uma conta"}
         </button>
       </form>
     </div>
   );
 }
 
-const page = {
-  minHeight: "100vh",
-  display: "grid",
-  placeItems: "center",
-  background: "#030806",
-  color: "#F3FFF8",
-  fontFamily: "Arial, sans-serif",
-};
-
-const card = {
-  width: "min(360px, calc(100vw - 36px))",
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
-  padding: 28,
-  background: "#07100C",
-  border: "1px solid rgba(39,245,154,.14)",
-  borderRadius: 16,
-  boxShadow: "0 18px 60px rgba(0,0,0,.28)",
-};
-
-const input = {
-  padding: 13,
-  background: "rgba(255,255,255,.03)",
-  border: "1px solid rgba(39,245,154,.12)",
-  color: "#fff",
-  outline: "none",
-  borderRadius: 10,
-};
-
-const button = {
-  padding: 13,
-  border: 0,
-  borderRadius: 10,
-  background: "#27F59A",
-  color: "#021008",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondary = {
-  padding: 10,
-  border: "1px solid rgba(39,245,154,.12)",
-  borderRadius: 10,
-  background: "transparent",
-  color: "#9CB4A8",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const loading = {
-  minHeight: "100vh",
-  display: "grid",
-  placeItems: "center",
-  background: "#030806",
-  color: "#789086",
-  fontFamily: "monospace",
-  letterSpacing: 3,
-};
-
-const logout = {
-  position: "fixed",
-  right: 12,
-  bottom: 12,
-  zIndex: 9999,
-  background: "#07100C",
-  border: "1px solid rgba(39,245,154,.16)",
-  color: "#789086",
-  padding: "7px 10px",
-  borderRadius: 8,
-  cursor: "pointer",
-};
+const pageStyle={minHeight:"100vh",display:"grid",placeItems:"center",background:"#050505",color:"#eee",fontFamily:"Arial,sans-serif"};
+const cardStyle={width:"min(360px,calc(100vw - 36px))",display:"flex",flexDirection:"column",gap:12,padding:28,border:"1px solid #222",background:"#090909"};
+const inputStyle={padding:"13px 12px",background:"#111",border:"1px solid #292929",color:"#fff",outline:"none"};
+const buttonStyle={padding:"13px",background:"#eee",color:"#050505",border:0,fontWeight:800,cursor:"pointer"};
+const linkStyle={background:"transparent",border:0,color:"#888",cursor:"pointer",padding:8};
+const loadingStyle={minHeight:"100vh",display:"grid",placeItems:"center",background:"#050505",color:"#888",fontFamily:"monospace",letterSpacing:3};
+const topStyle={position:"fixed",top:10,right:12,zIndex:9999,display:"flex",gap:10,alignItems:"center",fontFamily:"monospace",fontSize:10,color:"#777"};
+const logoutStyle={background:"transparent",border:"1px solid #333",color:"#888",padding:"6px 9px",cursor:"pointer"};
